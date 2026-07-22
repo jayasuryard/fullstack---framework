@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
+import { PageHeader, Card, Input, Button } from '@/design-system';
 import toast from 'react-hot-toast';
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
 
@@ -28,49 +29,38 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-6">Settings</h1>
+      <PageHeader title="Settings" description="Manage your account settings" />
 
-      <div className="card mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-4">Profile</h2>
+      <Card className="mb-6 space-y-4">
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Profile</h2>
         <div className="space-y-3">
           <div>
-            <label className="label">Name</label>
-            <p className="text-sm text-gray-900 dark:text-gray-100">{user?.firstName} {user?.lastName}</p>
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Name</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-100">{user?.firstName} {user?.lastName}</p>
           </div>
           <div>
-            <label className="label">Email</label>
-            <p className="text-sm text-gray-900 dark:text-gray-100">{user?.email}</p>
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Email</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-100">{user?.email}</p>
           </div>
           <div>
-            <label className="label">Role</label>
-            <p className="text-sm text-gray-900 dark:text-gray-100">{user?.role}</p>
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Role</p>
+            <p className="text-sm text-neutral-900 dark:text-neutral-100">{user?.role}</p>
           </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="card">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-4">Change Password</h2>
+      <Card className="space-y-4">
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Change Password</h2>
         <form onSubmit={handlePasswordChange} className="space-y-4">
-          <div>
-            <label className="label">Current password</label>
-            <input type="password" className="input-field" value={passwords.currentPassword}
-              onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} required />
-          </div>
-          <div>
-            <label className="label">New password</label>
-            <input type="password" className="input-field" value={passwords.newPassword}
-              onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} required minLength={8} />
-          </div>
-          <div>
-            <label className="label">Confirm new password</label>
-            <input type="password" className="input-field" value={passwords.confirmPassword}
-              onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} required />
-          </div>
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Updating...' : 'Update password'}
-          </button>
+          <Input label="Current password" type="password" value={passwords.currentPassword}
+            onChange={(e) => setPasswords(p => ({ ...p, currentPassword: e.target.value }))} required />
+          <Input label="New password" type="password" value={passwords.newPassword}
+            onChange={(e) => setPasswords(p => ({ ...p, newPassword: e.target.value }))} required minLength={8} />
+          <Input label="Confirm new password" type="password" value={passwords.confirmPassword}
+            onChange={(e) => setPasswords(p => ({ ...p, confirmPassword: e.target.value }))} required />
+          <Button type="submit" loading={loading}>Update password</Button>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

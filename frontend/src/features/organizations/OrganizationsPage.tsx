@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { formatDate, getInitials } from '@/lib/utils';
+import { PageHeader, Card, Button, Input, Badge, Avatar } from '@/design-system';
 import toast from 'react-hot-toast';
 
 export default function OrganizationsPage() {
@@ -28,53 +28,54 @@ export default function OrganizationsPage() {
 
   return (
     <div className="max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50">Organizations</h1>
-        <button onClick={() => setShowCreate(!showCreate)} className="btn-primary text-sm">Create organization</button>
-      </div>
+      <PageHeader title="Organizations" description="Manage your organizations and members"
+        actions={<Button onClick={() => setShowCreate(!showCreate)} size="sm">
+          {showCreate ? 'Cancel' : 'Create organization'}
+        </Button>}
+      />
 
       {showCreate && (
-        <div className="card mb-6">
-          <h2 className="text-lg font-semibold mb-4">New Organization</h2>
-          <div className="space-y-3">
-            <input className="input-field" placeholder="Name" value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} />
-            <input className="input-field" placeholder="Slug" value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: e.target.value }))} />
-            <input className="input-field" placeholder="Website" value={form.website} onChange={(e) => setForm(f => ({ ...f, website: e.target.value }))} />
-            <button onClick={() => createOrg.mutate()} disabled={!form.name} className="btn-primary text-sm">Create</button>
-          </div>
-        </div>
+        <Card className="mb-6 space-y-4">
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">New Organization</h2>
+          <Input placeholder="Name" value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} />
+          <Input placeholder="Slug" value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: e.target.value }))} />
+          <Input placeholder="Website" value={form.website} onChange={(e) => setForm(f => ({ ...f, website: e.target.value }))} />
+          <Button onClick={() => createOrg.mutate()} disabled={!form.name} size="sm">Create</Button>
+        </Card>
       )}
 
       <div className="space-y-4">
         {(data || []).map((org: any) => (
-          <div key={org.id} className="card">
+          <Card key={org.id}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold">{org.name}</h3>
-                <p className="text-sm text-gray-500">{org.slug}</p>
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{org.name}</h3>
+                <p className="text-xs text-neutral-500">{org.slug}</p>
               </div>
               <div className="flex gap-2 items-center">
-                <input className="input-field text-sm w-48" placeholder="email@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
-                <button onClick={() => inviteMember.mutate(org.id)} disabled={!inviteEmail} className="btn-secondary text-sm">Invite</button>
+                <Input placeholder="email@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="w-48" />
+                <Button onClick={() => inviteMember.mutate(org.id)} disabled={!inviteEmail} variant="secondary" size="sm">Invite</Button>
               </div>
             </div>
             {org.members?.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-2">Members</p>
+                <p className="text-xs font-medium text-neutral-500 uppercase mb-2">Members</p>
                 <div className="space-y-2">
                   {org.members.map((m: any) => (
                     <div key={m.id} className="flex items-center gap-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-xs font-medium text-primary-700">{getInitials(m.user.firstName, m.user.lastName)}</div>
-                      <span className="text-sm">{m.user.firstName} {m.user.lastName}</span>
-                      <span className="text-xs text-gray-400">{m.role}</span>
+                      <Avatar initials={`${m.user.firstName?.[0] || ''}${m.user.lastName?.[0] || ''}`} size="sm" />
+                      <span className="text-sm text-neutral-900 dark:text-neutral-100">{m.user.firstName} {m.user.lastName}</span>
+                      <Badge variant="default">{m.role}</Badge>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         ))}
-        {(!data || data.length === 0) && <div className="card text-center py-8 text-gray-500">No organizations yet</div>}
+        {(!data || data.length === 0) && (
+          <Card className="text-center py-8 text-neutral-500">No organizations yet</Card>
+        )}
       </div>
     </div>
   );

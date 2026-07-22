@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { Card, Button, Spinner } from '@/design-system';
+import { AlertCircle } from 'lucide-react';
 
 export default function OAuthCallback() {
   const [searchParams] = useSearchParams();
@@ -33,25 +35,27 @@ export default function OAuthCallback() {
   }, [searchParams, navigate, loadProfile]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
-      <div className="card text-center max-w-sm w-full">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 dark:bg-neutral-950">
+      <Card className="text-center max-w-sm w-full">
         {status === 'processing' ? (
           <>
-            <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50">Completing sign in...</h2>
-            <p className="text-sm text-gray-500 mt-2">You will be redirected shortly</p>
+            <Spinner size="lg" />
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 mt-4">Completing sign in...</h2>
+            <p className="text-sm text-neutral-500 mt-2">You will be redirected shortly</p>
           </>
         ) : (
           <>
-            <div className="h-8 w-8 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-bold">!</div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50">Sign in failed</h2>
-            <p className="text-sm text-gray-500 mt-2">{errorMessage || 'Something went wrong'}</p>
-            <button onClick={() => navigate('/app/login')} className="btn-primary mt-4 w-full">
+            <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-danger-100 dark:bg-danger-900/30">
+              <AlertCircle className="h-5 w-5 text-danger-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Sign in failed</h2>
+            <p className="text-sm text-neutral-500 mt-2">{errorMessage || 'Something went wrong'}</p>
+            <Button onClick={() => navigate('/app/login')} className="mt-4 w-full">
               Back to sign in
-            </button>
+            </Button>
           </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

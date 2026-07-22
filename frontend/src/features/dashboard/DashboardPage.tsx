@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import type { DashboardData, AdminStats } from '@/types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { StatCard, Card, Skeleton, Button } from '@/design-system';
 import { useAuth } from '@/hooks/useAuth';
+import { Activity, Bell, FileText, Users } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Link } from 'react-router-dom';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
@@ -13,71 +15,47 @@ export default function DashboardPage() {
 
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: async () => {
-      const res = await api.get('/dashboard');
-      return res.data.data.dashboard as DashboardData;
-    },
+    queryFn: async () => { const res = await api.get('/dashboard'); return res.data.data.dashboard; },
   });
 
   const { data: statsData } = useQuery({
     queryKey: ['admin-stats'],
-    queryFn: async () => {
-      const res = await api.get('/admin/stats');
-      return res.data.data.stats as AdminStats;
-    },
+    queryFn: async () => { const res = await api.get('/admin/stats'); return res.data.data.stats; },
     enabled: isAdmin,
   });
 
   const { data: userAnalytics } = useQuery({
     queryKey: ['user-analytics'],
-    queryFn: async () => {
-      const res = await api.get('/admin/user-analytics');
-      return res.data.data.analytics;
-    },
+    queryFn: async () => { const res = await api.get('/admin/user-analytics'); return res.data.data.analytics; },
     enabled: isAdmin,
   });
 
-  if (isLoading) return <div className="text-center py-12 text-gray-500">Loading dashboard...</div>;
+  if (isLoading) return <div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>;
 
-  const roleChartData = userAnalytics?.byRole?.map((r: any) => ({
-    name: r.role,
-    value: r._count.id,
-  })) || [];
-
-  const statusChartData = userAnalytics?.byStatus?.map((s: any) => ({
-    name: s.status,
-    value: s._count.id,
-  })) || [];
+  const roleChartData = userAnalytics?.byRole?.map((r: any) => ({ name: r.role, value: r._count.id })) || [];
+  const statusChartData = userAnalytics?.byStatus?.map((s: any) => ({ name: s.status, value: s._count.id })) || [];
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-6">Dashboard</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Dashboard</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Welcome back, {user?.firstName}</p>
+        </div>
+        <Link to="/app/billing"><Button variant="secondary" size="sm">Upgrade</Button></Link>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="card">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Unread Notifications</p>
-          <p className="text-3xl font-bold text-gray-900 dark:text-gray-50 mt-1">{dashboardData?.unreadNotifications ?? 0}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Recent Files</p>
-          <p className="text-3xl font-bold text-gray-900 dark:text-gray-50 mt-1">{dashboardData?.recentFiles?.length ?? 0}</p>
-        </div>
-        <div className="card">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Recent Activities</p>
-          <p className="text-3xl font-bold text-gray-900 dark:text-gray-50 mt-1">{dashboardData?.recentActivities?.length ?? 0}</p>
-        </div>
-        {isAdmin && (
-          <div className="card">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Total Users</p>
-            <p className="text-3xl font-bold text-gray-900 dark:text-gray-50 mt-1">{statsData?.totalUsers ?? 0}</p>
-          </div>
-        )}
+        <StatCard title="Notifications" value={dashboardData?.unreadNotifications ?? 0} icon={<Bell className="h-4 w-4" />} />
+        <StatCard title="Recent Files" value={dashboardData?.recentFiles?.length ?? 0} icon={<FileText className="h-4 w-4" />} />
+        <StatCard title="Activities" value={dashboardData?.recentActivities?.length ?? 0} icon={<Activity className="h-4 w-4" />} />
+        {isAdmin && <StatCard title="Total Users" value={statsData?.totalUsers ?? 0} icon={<Users className="h-4 w-4" />} />}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {roleChartData.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-4">Users by Role</h2>
+          <Card className="space-y-4">
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Users by Role</h2>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={roleChartData}>
@@ -89,64 +67,69 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </Card>
         )}
         {statusChartData.length > 0 && (
-          <div className="card">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-4">Users by Status</h2>
+          <Card className="space-y-4">
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Users by Status</h2>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={statusChartData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                    {statusChartData.map((_: any, i: number) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
+                    {statusChartData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </Card>
         )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-4">Recent Activity</h2>
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Recent Activity</h2>
+            <Link to="/app/settings" className="text-xs text-primary-600 hover:text-primary-700">View all</Link>
+          </div>
           {dashboardData?.recentActivities?.length ? (
             <div className="space-y-3">
-              {dashboardData.recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0">
+              {dashboardData.recentActivities.map((activity: any) => (
+                <div key={activity.id} className="flex items-center justify-between py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-0">
                   <div>
-                    <p className="text-sm text-gray-900 dark:text-gray-100">{activity.description}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{activity.type}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{activity.description}</p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">{activity.type}</p>
                   </div>
-                  <span className="text-xs text-gray-400">{formatDate(activity.createdAt)}</span>
+                  <span className="text-xs text-neutral-400">{formatDate(activity.createdAt)}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No recent activity</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 py-8 text-center">No recent activity</p>
           )}
-        </div>
+        </Card>
 
-        <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-4">Recent Files</h2>
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Recent Files</h2>
+            <Link to="/app/settings" className="text-xs text-primary-600 hover:text-primary-700">View all</Link>
+          </div>
           {dashboardData?.recentFiles?.length ? (
             <div className="space-y-3">
-              {dashboardData.recentFiles.map((file) => (
-                <div key={file.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0">
+              {dashboardData.recentFiles.map((file: any) => (
+                <div key={file.id} className="flex items-center justify-between py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-0">
                   <div className="flex items-center gap-3">
-                    <div className="text-sm text-gray-900 dark:text-gray-100">{file.originalName}</div>
+                    <FileText className="h-4 w-4 text-neutral-400" />
+                    <span className="text-sm text-neutral-900 dark:text-neutral-100">{file.originalName}</span>
                   </div>
-                  <span className="text-xs text-gray-400">{formatDate(file.createdAt)}</span>
+                  <span className="text-xs text-neutral-400">{formatDate(file.createdAt)}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No files uploaded</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 py-8 text-center">No files uploaded</p>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );
