@@ -41,4 +41,31 @@ export const config = {
     apiKey: process.env.GROQ_API_KEY,
     model: process.env.GROQ_MODEL || 'llama3-70b-8192',
   },
+
+  oauth: {
+    baseCallbackUrl: process.env.OAUTH_CALLBACK_URL || 'http://localhost:4000/api/auth/oauth',
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    },
+    facebook: {
+      clientId: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+    },
+    apple: {
+      clientId: process.env.APPLE_CLIENT_ID,
+      teamId: process.env.APPLE_TEAM_ID,
+      keyId: process.env.APPLE_KEY_ID,
+      privateKey: process.env.APPLE_PRIVATE_KEY_PATH,
+    },
+    microsoft: {
+      clientId: process.env.MICROSOFT_CLIENT_ID,
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+      tenant: process.env.MICROSOFT_TENANT || 'common',
+    },
+    twitter: {
+      consumerKey: process.env.TWITTER_CONSUMER_KEY,
+      consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
+    },
+  },
 };

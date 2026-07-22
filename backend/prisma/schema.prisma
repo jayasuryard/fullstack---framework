@@ -23,29 +23,44 @@ enum UserStatus {
 }
 
 model User {
-  id             String     @id @default(uuid()) @db.Uuid
-  email          String     @unique
-  password       String
-  firstName      String
-  lastName       String
-  role           UserRole   @default(MEMBER)
-  status         UserStatus @default(PENDING)
-  avatar         String?
-  phone          String?
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique
+  password        String
+  firstName       String
+  lastName        String
+  role            UserRole   @default(MEMBER)
+  status          UserStatus @default(PENDING)
+  avatar          String?
+  phone           String?
   emailVerifiedAt DateTime?
   twoFactorSecret String?
   twoFactorEnabled Boolean  @default(false)
-  lastLoginAt    DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  deletedAt      DateTime?
+  googleId        String?  @unique
+  facebookId      String?  @unique
+  appleId         String?  @unique
+  microsoftId     String?  @unique
+  twitterId       String?  @unique
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
 
-  sessions      Session[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  activities    Activity[]
-  loginAttempts LoginAttempt[]
+  sessions          Session[]
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  activities        Activity[]
+  loginAttempts     LoginAttempt[]
+  conversations     Conversation[]
+  messages          Message[]
+  subscriptions     Subscription[]
+  invoices          Invoice[]
+  paymentMethods    PaymentMethod[]
+  usageRecords      UsageRecord[]
+  notificationPrefs NotificationPreference[]
+  files             File[]
+  apiKeys           ApiKey[]
+  organizationMembers OrganizationMember[]
 
   @@index([email])
   @@index([status])
@@ -83,6 +98,35 @@ model RefreshToken {
   @@index([token])
 }
 
+model EmailVerificationToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  code      String
+  purpose   String   // EMAIL_VERIFICATION, PASSWORD_RESET, MFA, LOGIN
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([code])
+}
+
 model LoginAttempt {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @db.Uuid
@@ -96,6 +140,39 @@ model LoginAttempt {
 
   @@index([userId])
   @@index([createdAt])
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  action      String   // create, read, update, delete, manage
+  resource    String   // user, organization, billing, settings, etc.
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@unique([action, resource])
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
 }
 
 model AuditLog {
@@ -126,6 +203,7 @@ model Notification {
   message   String
   data      Json?
   read      Boolean  @default(false)
+  channel   String   @default("in_app") // in_app, email, push
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -134,13 +212,38 @@ model Notification {
   @@index([createdAt])
 }
 
-model Activity {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  type      String
-  description String
-  metadata  Json?
+model NotificationPreference {
+  id      String @id @default(uuid()) @db.Uuid
+  userId  String @db.Uuid
+  type    String // System notification type
+  email   Boolean @default(true)
+  inApp   Boolean @default(true)
+  push    Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId])
+}
+
+model NotificationTemplate {
+  id      String @id @default(uuid()) @db.Uuid
+  name    String @unique
+  subject String?
+  body    String
+  channels Json? // ["email", "in_app", "push"]
+  variables Json?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Activity {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  type        String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -159,6 +262,9 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
+
+  members    OrganizationMember[]
+  invitations Invitation[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -179,16 +285,51 @@ model OrganizationMember {
   @@index([userId])
 }
 
+model Team {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  description String?
+  organizationId String @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+
+  @@index([organizationId])
+  @@index([slug])
+}
+
+model TeamMember {
+  id     String   @id @default(uuid()) @db.Uuid
+  teamId String   @db.Uuid
+  userId String   @db.Uuid
+  role   UserRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
 model Invitation {
   id             String   @id @default(uuid()) @db.Uuid
   email          String
   organizationId String?  @db.Uuid
+  teamId         String?  @db.Uuid
   role           UserRole @default(MEMBER)
   token          String   @unique
   expiresAt      DateTime
   acceptedAt     DateTime?
   createdBy      String   @db.Uuid
   createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  team         Team?         @relation(fields: [teamId], references: [id])
 
   @@index([email])
   @@index([token])
@@ -217,23 +358,186 @@ model ApiKey {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([key])
 }
 
 model File {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
   originalName String
-  mimeType    String
-  size        Int
-  key         String   @unique
-  url         String
-  bucket      String
-  region      String?
-  createdAt   DateTime @default(now())
-  deletedAt   DateTime?
+  mimeType     String
+  size         Int
+  key          String   @unique
+  url          String
+  thumbnailUrl String?
+  variants     Json?    // responsive image variants
+  bucket       String
+  region       String?
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([key])
+}
+
+model Conversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  title     String   @default("New conversation")
+  model     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId])
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @db.Uuid
+  role           String   // user, assistant, system
+  content        String
+  tokens         Int?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model Plan {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  description String?
+  price       Decimal  @default(0) @db.Decimal(10, 2)
+  currency    String   @default("USD")
+  interval    String   @default("month") // month, year
+  features    Json?
+  limits      Json?    // plan limits (seats, storage, etc.)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  planId      String   @db.Uuid
+  status      String   @default("active") // active, cancelled, past_due, trialing, expired
+  startsAt    DateTime @default(now())
+  endsAt      DateTime?
+  trialEndsAt DateTime?
+  canceledAt  DateTime?
+  stripeSubscriptionId String? @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan     @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+}
+
+model Invoice {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  subscriptionId String?   @db.Uuid
+  number         String    @unique
+  amount         Decimal   @db.Decimal(10, 2)
+  currency       String    @default("USD")
+  status         String    @default("pending") // pending, paid, overdue, cancelled, refunded
+  paidAt         DateTime?
+  dueAt          DateTime?
+  lines          Json?
+  stripeInvoiceId String?  @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  payments     Payment[]
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+}
+
+model Payment {
+  id             String   @id @default(uuid()) @db.Uuid
+  invoiceId      String   @db.Uuid
+  amount         Decimal  @db.Decimal(10, 2)
+  currency       String   @default("USD")
+  method         String?  // card, transfer, crypto
+  status         String   @default("pending") // pending, completed, failed, refunded
+  stripePaymentIntentId String? @unique
+  createdAt      DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model PaymentMethod {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  type             String   // card, bank, crypto
+  lastFour         String?
+  brand            String?
+  expMonth         Int?
+  expYear          Int?
+  stripeMethodId   String?  @unique
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Coupon {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  description String?
+  discountType String  // percentage, fixed
+  discountValue Decimal @db.Decimal(10, 2)
+  maxUses     Int?
+  usedCount   Int      @default(0)
+  minAmount   Decimal? @db.Decimal(10, 2)
+  startsAt    DateTime?
+  expiresAt   DateTime?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([code])
+}
+
+model UsageRecord {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  feature     String   // api_calls, storage, seats, etc.
+  quantity    Int      @default(1)
+  recordedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feature])
+  @@index([recordedAt])
 }

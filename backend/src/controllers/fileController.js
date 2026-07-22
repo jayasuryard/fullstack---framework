@@ -10,6 +10,24 @@ export async function uploadFile(req, res, next) {
   }
 }
 
+export async function getFile(req, res, next) {
+  try {
+    const file = await fileService.getFile(req.params.id, req.user.id);
+    sendSuccess(res, { file });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function downloadFile(req, res, next) {
+  try {
+    const file = await fileService.getFile(req.params.id, req.user.id);
+    res.redirect(file.url);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function listFiles(req, res, next) {
   try {
     const result = await fileService.listFiles(req.user.id, req.query);

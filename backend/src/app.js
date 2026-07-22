@@ -9,6 +9,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import notificationRoutes from './routes/notifications.js';
+import notificationPrefRoutes from './routes/notificationPrefs.js';
 import activityRoutes from './routes/activities.js';
 import auditLogRoutes from './routes/auditLogs.js';
 import fileRoutes from './routes/files.js';
@@ -17,8 +18,18 @@ import adminRoutes from './routes/admin.js';
 import dashboardRoutes from './routes/dashboard.js';
 import searchRoutes from './routes/search.js';
 import aiRoutes from './routes/ai.js';
+import mfaRoutes from './routes/mfa.js';
+import emailVerificationRoutes from './routes/emailVerification.js';
+import organizationRoutes from './routes/organizations.js';
+import teamRoutes from './routes/teams.js';
+import conversationRoutes from './routes/conversations.js';
+import billingRoutes from './routes/billing.js';
+import oauthRoutes from './routes/oauth.js';
+import passport from 'passport';
+import { configurePassport } from './config/passport.js';
 
 const app = express();
+configurePassport();
 
 app.use(helmet());
 app.use(cors({ origin: config.cors.origin, credentials: true }));
@@ -37,7 +48,9 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
+app.use(passport.initialize());
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/oauth', oauthRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/activities', activityRoutes);
@@ -48,6 +61,13 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/mfa', mfaRoutes);
+app.use('/api/email-verification', emailVerificationRoutes);
+app.use('/api/organizations', organizationRoutes);
+app.use('/api/teams', teamRoutes);
+app.use('/api/conversations', conversationRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/notification-preferences', notificationPrefRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'RyoFramework API is running', timestamp: new Date().toISOString() });

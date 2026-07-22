@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import OAuthButtons from '@/components/shared/OAuthButtons';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -26,7 +27,10 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50">RyoFramework</h1>
+          <Link to="/" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4">
+            &larr; Back to home
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50">Welcome back</h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Sign in to your account</p>
         </div>
         <form onSubmit={handleSubmit} className="card space-y-4">
@@ -42,9 +46,12 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
+        <div className="mt-4">
+          <OAuthButtons mode="signin" />
+        </div>
         <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
           Don&apos;t have an account?{' '}
-          <Link to="/signup" className="text-primary-600 hover:text-primary-700 font-medium">Sign up</Link>
+          <Link to="/app/signup" className="text-primary-600 hover:text-primary-700 font-medium">Sign up</Link>
         </p>
       </div>
     </div>
