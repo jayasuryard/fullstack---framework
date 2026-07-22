@@ -2,6 +2,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import DocPage from '@/components/DocPage';
+import Hero from '@/components/Hero';
 
 const docs = import.meta.glob('./content/**/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
@@ -45,17 +46,15 @@ function buildDocTree(): DocEntry[] {
 export const docEntries = buildDocTree();
 
 export default function App() {
-  const introduction = docEntries.find(d => d.slug === 'introduction');
-
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<Navigate to={introduction ? `/docs/${introduction.slug}` : '/docs/introduction'} replace />} />
+      <Route path="/" element={<Hero />} />
+      <Route path="/docs" element={<Layout />}>
         {docEntries.map((doc) => (
-          <Route key={doc.slug} path={`docs/${doc.slug}`} element={<DocPage doc={doc} />} />
+          <Route key={doc.slug} path={doc.slug} element={<DocPage doc={doc} />} />
         ))}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
