@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-neutral-200 dark:border-neutral-800;
+  }
+  body {
+    @apply bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .prose-custom {
+    @apply max-w-none;
+  }
+  .prose-custom h2 {
+    @apply text-xl font-semibold text-neutral-900 dark:text-neutral-50 mt-10 mb-4;
+  }
+  .prose-custom h3 {
+    @apply text-lg font-semibold text-neutral-900 dark:text-neutral-50 mt-8 mb-3;
+  }
+  .prose-custom p {
+    @apply text-neutral-600 dark:text-neutral-400 leading-relaxed mb-4;
+  }
+  .prose-custom ul {
+    @apply space-y-1.5 mb-4;
+  }
+  .prose-custom li {
+    @apply text-neutral-600 dark:text-neutral-400 leading-relaxed;
+  }
+  .prose-custom strong {
+    @apply text-neutral-900 dark:text-neutral-100 font-semibold;
+  }
+  .prose-custom a {
+    @apply text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 underline underline-offset-2;
+  }
+  .prose-custom hr {
+    @apply border-neutral-200 dark:border-neutral-800 my-8;
+  }
+  .prose-custom blockquote {
+    @apply border-l-4 border-primary-500 pl-4 italic text-neutral-600 dark:text-neutral-400 my-4;
+  }
+  .prose-custom table {
+    @apply w-full border-collapse mb-6;
+  }
+  .prose-custom th {
+    @apply text-left text-xs font-medium text-neutral-500 uppercase tracking-wider px-4 py-3 border-b border-neutral-200 dark:border-neutral-800;
+  }
+  .prose-custom td {
+    @apply px-4 py-3 text-sm text-neutral-700 dark:text-neutral-300 border-b border-neutral-100 dark:border-neutral-800;
+  }
+  .prose-custom img {
+    @apply rounded-xl border border-neutral-200 dark:border-neutral-800 my-6;
+  }
+  .prose-custom code:not(pre code) {
+    @apply bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+}
