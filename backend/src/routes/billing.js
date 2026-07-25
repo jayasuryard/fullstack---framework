@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as billingController from '../controllers/billingController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
 

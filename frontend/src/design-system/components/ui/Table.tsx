@@ -25,8 +25,8 @@ export function Table<T extends Record<string, any>>({ columns, data, loading, e
     return (
       <div className={cn('rounded-xl border border-neutral-200 dark:border-neutral-800', className)}>
         <div className="p-6 space-y-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-4 bg-neutral-200 rounded animate-pulse dark:bg-neutral-800" style={{ width: `${60 + Math.random() * 40}%` }} />
+          {[75, 55, 90, 65, 80].map((w, i) => (
+            <div key={i} className="h-4 bg-neutral-200 rounded animate-pulse dark:bg-neutral-800" style={{ width: `${w}%` }} />
           ))}
         </div>
       </div>

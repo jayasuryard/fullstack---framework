@@ -5,7 +5,7 @@ export function notFoundHandler(req, res, next) {
   next(ApiError.notFound(`Route ${req.originalUrl} not found`));
 }
 
-export function errorHandler(err, req, res, next) {
+export function errorHandler(err, req, res, _next) {
   if (err instanceof ApiError) {
     return res.status(err.statusCode).json({
       success: false,

@@ -2,7 +2,6 @@ import prisma from '../config/database.js';
 import { buildPagination } from '../utils/helpers.js';
 import { ApiError } from '../utils/ApiError.js';
 import { config } from '../config/index.js';
-import { generateFileKey } from '../middleware/upload.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 import path from 'path';
@@ -72,7 +71,7 @@ export async function uploadFile(userId, file) {
       const sharp = (await import('sharp')).default;
       const metadata = await sharp(file.buffer).metadata();
       variants = { width: metadata.width, height: metadata.height, format: metadata.format };
-    } catch {}
+    } catch { /* ignore metadata errors */ }
   }
 
   const saved = await prisma.file.create({

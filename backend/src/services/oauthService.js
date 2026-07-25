@@ -128,6 +128,11 @@ export async function findOrCreateUser(provider, profile) {
 }
 
 function sanitizeUser(user) {
-  const { password, twoFactorSecret, ...safeUser } = user;
+  const {
+    password, twoFactorSecret,
+    googleId, facebookId, appleId, microsoftId, twitterId,
+    deletedAt,
+    ...safeUser
+  } = user;
   return safeUser;
 }

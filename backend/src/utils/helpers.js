@@ -19,16 +19,20 @@ export function generateToken(length = 32) {
 }
 
 export function generateOTP(length = 6) {
-  const digits = '0123456789';
   let otp = '';
   for (let i = 0; i < length; i++) {
-    otp += digits[Math.floor(Math.random() * 10)];
+    otp += crypto.randomInt(0, 10).toString();
   }
   return otp;
 }
 
 export function sanitizeUser(user) {
-  const { password, twoFactorSecret, ...safeUser } = user;
+  const {
+    password, twoFactorSecret,
+    googleId, facebookId, appleId, microsoftId, twitterId,
+    deletedAt,
+    ...safeUser
+  } = user;
   return safeUser;
 }
 

@@ -78,7 +78,7 @@ export default function AiChatPage() {
                 <MessageSquare className="h-3.5 w-3.5 shrink-0" />
                 <p className="truncate">{conv.title}</p>
               </div>
-              <p className="text-xs text-neutral-400 mt-0.5 ml-5.5">{conv._count?.messages || 0} messages</p>
+              <p className="text-xs text-neutral-400 mt-0.5 ml-6">{conv._count?.messages || 0} messages</p>
             </button>
           ))}
         </div>

@@ -17,8 +17,11 @@ export async function authenticate(req, res, next) {
       select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
     });
 
-    if (!user || user.status !== 'ACTIVE') {
-      throw ApiError.unauthorized('User not found or inactive');
+    if (!user) {
+      throw ApiError.unauthorized('User not found');
+    }
+    if (user.status === 'SUSPENDED' || user.status === 'BANNED') {
+      throw ApiError.forbidden('Account is suspended or banned');
     }
 
     req.user = user;

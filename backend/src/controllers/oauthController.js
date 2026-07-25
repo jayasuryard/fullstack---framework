@@ -26,7 +26,7 @@ export function handleOAuthCallback(req, res, next) {
     return res.status(400).json({ success: false, message: `OAuth provider "${provider}" is not configured` });
   }
 
-  passport.authenticate(provider, { session: false, failWithError: true }, (err, user, info) => {
+  passport.authenticate(provider, { session: false, failWithError: true }, (err, user, _info) => {
     if (err || !user) {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
       const errorMessage = err?.message || 'Authentication failed';

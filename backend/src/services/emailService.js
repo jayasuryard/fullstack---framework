@@ -7,7 +7,7 @@ let transporter = null;
 function getTransporter() {
   if (transporter) return transporter;
 
-  if (config.smtp.host) {
+  if (config.smtp.host && config.smtp.user && config.smtp.pass) {
     transporter = nodemailer.createTransport({
       host: config.smtp.host,
       port: config.smtp.port,
@@ -18,10 +18,10 @@ function getTransporter() {
       },
     });
   } else {
-    logger.warn('SMTP not configured, using console transport');
+    logger.warn('SMTP not fully configured, using console transport');
     transporter = {
       sendMail: async (options) => {
-        logger.info('Email log:', options);
+        logger.info('Email (not sent):', { to: options.to, subject: options.subject });
       },
     };
   }

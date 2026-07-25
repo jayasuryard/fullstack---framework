@@ -1,29 +1,40 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { PageHeader, Card, Button, Input, Badge, Avatar } from '@/design-system';
+import { PageHeader, Card, Button, Input, Badge, Avatar, EmptyState, Skeleton } from '@/design-system';
 import toast from 'react-hot-toast';
+import { Building2 } from 'lucide-react';
 
 export default function OrganizationsPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', slug: '', website: '' });
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteEmails, setInviteEmails] = useState<Record<string, string>>({});
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['organizations'],
     queryFn: async () => { const res = await api.get('/organizations'); return res.data.data.organizations; },
   });
 
   const createOrg = useMutation({
     mutationFn: () => api.post('/organizations', form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['organizations'] }); setShowCreate(false); setForm({ name: '', slug: '', website: '' }); toast.success('Organization created'); },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Failed'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      setShowCreate(false);
+      setForm({ name: '', slug: '', website: '' });
+      toast.success('Organization created');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to create'),
   });
 
   const inviteMember = useMutation({
-    mutationFn: (orgId: string) => api.post(`/organizations/${orgId}/invite`, { email: inviteEmail, role: 'MEMBER' }),
-    onSuccess: () => { setInviteEmail(''); toast.success('Invitation sent'); },
+    mutationFn: ({ orgId, email }: { orgId: string; email: string }) =>
+      api.post(`/organizations/${orgId}/invite`, { email, role: 'MEMBER' }),
+    onSuccess: (_data, vars) => {
+      setInviteEmails((prev) => ({ ...prev, [vars.orgId]: '' }));
+      toast.success('Invitation sent');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to invite'),
   });
 
   return (
@@ -44,39 +55,70 @@ export default function OrganizationsPage() {
         </Card>
       )}
 
-      <div className="space-y-4">
-        {(data || []).map((org: any) => (
-          <Card key={org.id}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{org.name}</h3>
-                <p className="text-xs text-neutral-500">{org.slug}</p>
-              </div>
-              <div className="flex gap-2 items-center">
-                <Input placeholder="email@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="w-48" />
-                <Button onClick={() => inviteMember.mutate(org.id)} disabled={!inviteEmail} variant="secondary" size="sm">Invite</Button>
-              </div>
-            </div>
-            {org.members?.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-neutral-500 uppercase mb-2">Members</p>
-                <div className="space-y-2">
-                  {org.members.map((m: any) => (
-                    <div key={m.id} className="flex items-center gap-3">
-                      <Avatar initials={`${m.user.firstName?.[0] || ''}${m.user.lastName?.[0] || ''}`} size="sm" />
-                      <span className="text-sm text-neutral-900 dark:text-neutral-100">{m.user.firstName} {m.user.lastName}</span>
-                      <Badge variant="default">{m.role}</Badge>
-                    </div>
-                  ))}
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2].map((i) => <Skeleton key={i} className="h-32" />)}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {(data || []).map((org: any) => {
+            const email = inviteEmails[org.id] ?? '';
+            return (
+              <Card key={org.id}>
+                <div className="flex items-start justify-between mb-4 gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{org.name}</h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">{org.slug}</p>
+                  </div>
+                  <div className="flex gap-2 items-center shrink-0">
+                    <Input
+                      placeholder="email@example.com"
+                      value={email}
+                      onChange={(e) => setInviteEmails((prev) => ({ ...prev, [org.id]: e.target.value }))}
+                      className="w-48"
+                    />
+                    <Button
+                      onClick={() => inviteMember.mutate({ orgId: org.id, email })}
+                      disabled={!email}
+                      loading={inviteMember.isPending}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      Invite
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </Card>
-        ))}
-        {(!data || data.length === 0) && (
-          <Card className="text-center py-8 text-neutral-500">No organizations yet</Card>
-        )}
-      </div>
+                {org.members?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-2">
+                      Members ({org.members.length})
+                    </p>
+                    <div className="space-y-2">
+                      {org.members.map((m: any) => (
+                        <div key={m.id} className="flex items-center gap-3">
+                          <Avatar initials={`${m.user?.firstName?.[0] || ''}${m.user?.lastName?.[0] || ''}`} size="sm" />
+                          <span className="text-sm text-neutral-900 dark:text-neutral-100">
+                            {m.user?.firstName} {m.user?.lastName}
+                          </span>
+                          <Badge variant="default">{m.role}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+          {(!data || data.length === 0) && (
+            <EmptyState
+              icon={<Building2 className="h-10 w-10" />}
+              title="No organizations yet"
+              description="Create your first organization to collaborate with your team."
+              action={<Button size="sm" onClick={() => setShowCreate(true)}>Create organization</Button>}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

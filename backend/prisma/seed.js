@@ -52,13 +52,13 @@ async function main() {
   await prisma.setting.upsert({
     where: { key: 'app_name' },
     update: {},
-    create: { key: 'app_name', value: '"RyoFramework"', group: 'general' },
+    create: { key: 'app_name', value: 'RyoFramework', group: 'general' },
   });
 
   await prisma.setting.upsert({
     where: { key: 'app_description' },
     update: {},
-    create: { key: 'app_description', value: '"Production-ready SaaS Framework"', group: 'general' },
+    create: { key: 'app_description', value: 'Production-ready SaaS Framework', group: 'general' },
   });
 
   const permissions = [

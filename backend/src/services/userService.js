@@ -3,7 +3,7 @@ import { hashPassword, comparePassword, sanitizeUser, buildPagination, buildWher
 import { ApiError } from '../utils/ApiError.js';
 
 export async function getProfile(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({ where: { id: userId, deletedAt: null } });
   if (!user) throw ApiError.notFound('User not found');
   return sanitizeUser(user);
 }
@@ -30,8 +30,10 @@ export async function updatePassword(userId, currentPassword, newPassword) {
 
 export async function listUsers(query) {
   const { page, limit, skip } = buildPagination(query);
-  const allowedFields = ['email', 'firstName', 'lastName', 'role', 'status'];
-  const where = buildWhereClause(query, allowedFields);
+  const where = { deletedAt: null, ...buildWhereClause(query, ['email', 'firstName', 'lastName']) };
+
+  if (query.role) where.role = query.role;
+  if (query.status) where.status = query.status;
 
   const [users, total] = await Promise.all([
     prisma.user.findMany({
@@ -51,7 +53,7 @@ export async function listUsers(query) {
 }
 
 export async function getUser(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({ where: { id: userId, deletedAt: null } });
   if (!user) throw ApiError.notFound('User not found');
   return sanitizeUser(user);
 }
