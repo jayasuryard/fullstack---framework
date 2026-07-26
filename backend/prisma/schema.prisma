@@ -45,22 +45,24 @@ model User {
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
 
-  sessions          Session[]
-  refreshTokens     RefreshToken[]
-  auditLogs         AuditLog[]
-  notifications     Notification[]
-  activities        Activity[]
-  loginAttempts     LoginAttempt[]
-  conversations     Conversation[]
-  messages          Message[]
-  subscriptions     Subscription[]
-  invoices          Invoice[]
-  paymentMethods    PaymentMethod[]
-  usageRecords      UsageRecord[]
-  notificationPrefs NotificationPreference[]
-  files             File[]
-  apiKeys           ApiKey[]
-  organizationMembers OrganizationMember[]
+  sessions                Session[]
+  refreshTokens           RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  otpCodes                OtpCode[]
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+  activities              Activity[]
+  loginAttempts           LoginAttempt[]
+  conversations           Conversation[]
+  subscriptions           Subscription[]
+  invoices                Invoice[]
+  paymentMethods          PaymentMethod[]
+  usageRecords            UsageRecord[]
+  notificationPrefs       NotificationPreference[]
+  files                   File[]
+  apiKeys                 ApiKey[]
+  organizationMembers     OrganizationMember[]
+  teamMembers             TeamMember[]
 
   @@index([email])
   @@index([status])
@@ -264,6 +266,7 @@ model Organization {
   deletedAt DateTime?
 
   members    OrganizationMember[]
+  teams      Team[]
   invitations Invitation[]
 
   @@index([slug])
@@ -295,7 +298,8 @@ model Team {
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members TeamMember[]
+  members     TeamMember[]
+  invitations Invitation[]
 
   @@index([organizationId])
   @@index([slug])

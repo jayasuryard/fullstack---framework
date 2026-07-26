@@ -1,5 +1,4 @@
 import prisma from '../config/database.js';
-import { ApiError } from '../utils/ApiError.js';
 
 export async function getSettings(group) {
   const where = group ? { group } : {};

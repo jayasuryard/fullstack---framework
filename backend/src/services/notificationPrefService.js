@@ -42,7 +42,6 @@ export async function createAndNotify(userId, type, title, message, data = null,
   if ((!pref || pref.email) && channels.includes('email')) {
     const { sendEmail } = await import('./emailService.js');
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    const { default: nodemailer } = await import('nodemailer');
     await sendEmail({ to: user.email, subject: title, html: `<p>${message}</p>` }).catch(() => {});
   }
 

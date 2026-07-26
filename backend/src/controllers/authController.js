@@ -1,4 +1,5 @@
 import * as authService from '../services/authService.js';
+import * as userService from '../services/userService.js';
 import { sendSuccess } from '../utils/response.js';
 
 export async function login(req, res, next) {
@@ -64,7 +65,7 @@ export async function resetPassword(req, res, next) {
 
 export async function me(req, res, next) {
   try {
-    const user = await authService.getProfile(req.user.id);
+    const user = await userService.getProfile(req.user.id);
     sendSuccess(res, { user });
   } catch (error) {
     next(error);

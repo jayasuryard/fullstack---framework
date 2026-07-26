@@ -29,8 +29,16 @@ export default function LoginPage() {
     <AuthLayout title="Welcome back" subtitle="Sign in to your account" backTo={{ label: 'Back to home', href: '/' }}>
       <Card>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Password</label>
+              <Link to="/app/forgot-password" className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+                Forgot password?
+              </Link>
+            </div>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+          </div>
           <Button type="submit" loading={loading} className="w-full">Sign in</Button>
         </form>
       </Card>

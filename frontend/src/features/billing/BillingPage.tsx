@@ -1,11 +1,13 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { PageHeader, Card, Button, Badge } from '@/design-system';
+import { PageHeader, Card, Button, Badge, EmptyState, Skeleton } from '@/design-system';
 import toast from 'react-hot-toast';
+import { CreditCard, Receipt } from 'lucide-react';
 
 export default function BillingPage() {
-  const { data: plansData } = useQuery({
+  const queryClient = useQueryClient();
+  const { data: plansData, isLoading: plansLoading } = useQuery({
     queryKey: ['plans'],
     queryFn: async () => { const res = await api.get('/billing/plans'); return res.data.data.plans; },
   });
@@ -20,22 +22,29 @@ export default function BillingPage() {
     queryFn: async () => { const res = await api.get('/billing/invoices'); return res.data; },
   });
 
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['subscription'] });
+
   const subscribe = useMutation({
     mutationFn: (planId: string) => api.post('/billing/subscribe', { planId }),
-    onSuccess: () => { toast.success('Subscribed!'); window.location.reload(); },
+    onSuccess: () => { toast.success('Subscribed!'); invalidate(); },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Subscription failed'),
   });
 
   const cancelSub = useMutation({
     mutationFn: (id: string) => api.post(`/billing/subscription/${id}/cancel`),
-    onSuccess: () => { toast.success('Subscription cancelled'); window.location.reload(); },
+    onSuccess: () => { toast.success('Subscription cancelled'); invalidate(); },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to cancel'),
   });
 
   return (
     <div className="max-w-4xl">
       <PageHeader title="Billing" description="Manage your subscription" />
 
-      {subData ? (
+      {plansLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48" />)}
+        </div>
+      ) : subData ? (
         <Card className="mb-6 space-y-2">
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Current Subscription</h2>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">Plan: <strong className="text-neutral-900 dark:text-neutral-100">{subData.plan?.name || 'N/A'}</strong></p>
@@ -46,6 +55,11 @@ export default function BillingPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {plansData?.length === 0 && (
+            <div className="col-span-3">
+              <EmptyState icon={<CreditCard className="h-10 w-10" />} title="No plans available" description="Contact support to set up billing plans." />
+            </div>
+          )}
           {(plansData || []).map((plan: any) => (
             <Card key={plan.id} className="flex flex-col">
               <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{plan.name}</h3>
@@ -76,27 +90,31 @@ export default function BillingPage() {
       <Card className="space-y-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Invoice History</h2>
         {invoicesData?.data?.length ? (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 uppercase">
-                <th className="text-left py-2 font-medium">Invoice</th>
-                <th className="text-left py-2 font-medium">Amount</th>
-                <th className="text-left py-2 font-medium">Status</th>
-                <th className="text-left py-2 font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {invoicesData.data.map((inv: any) => (
-                <tr key={inv.id}>
-                  <td className="py-3 text-sm text-neutral-900 dark:text-neutral-100">{inv.number}</td>
-                  <td className="py-3 text-sm text-neutral-900 dark:text-neutral-100">${Number(inv.amount).toFixed(2)}</td>
-                  <td className="py-3"><Badge variant={inv.status === 'paid' ? 'success' : 'warning'}>{inv.status}</Badge></td>
-                  <td className="py-3 text-sm text-neutral-500">{formatDate(inv.createdAt)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-neutral-200 dark:border-neutral-800">
+                  <th className="text-left py-2 text-xs font-medium text-neutral-500 uppercase tracking-wide">Invoice</th>
+                  <th className="text-left py-2 text-xs font-medium text-neutral-500 uppercase tracking-wide">Amount</th>
+                  <th className="text-left py-2 text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
+                  <th className="text-left py-2 text-xs font-medium text-neutral-500 uppercase tracking-wide">Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p className="text-sm text-neutral-500">No invoices yet</p>}
+              </thead>
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {invoicesData.data.map((inv: any) => (
+                  <tr key={inv.id}>
+                    <td className="py-3 text-sm text-neutral-900 dark:text-neutral-100">{inv.number}</td>
+                    <td className="py-3 text-sm text-neutral-900 dark:text-neutral-100">${Number(inv.amount).toFixed(2)}</td>
+                    <td className="py-3"><Badge variant={inv.status === 'paid' ? 'success' : 'warning'}>{inv.status}</Badge></td>
+                    <td className="py-3 text-sm text-neutral-500">{formatDate(inv.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState icon={<Receipt className="h-8 w-8" />} title="No invoices yet" description="Your invoices will appear here once you subscribe to a plan." />
+        )}
       </Card>
     </div>
   );

@@ -1,5 +1,5 @@
 import { aiProvider } from './provider.js';
-import { buildChatMessages, getSystemPrompt } from './promptManager.js';
+import { buildChatMessages } from './promptManager.js';
 
 export async function generateResponse(prompt, context = null, type = 'default') {
   const messages = buildChatMessages(prompt, context, type);

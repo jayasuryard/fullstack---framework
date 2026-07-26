@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
-import { StatCard, Card, Skeleton, Button } from '@/design-system';
+import { StatCard, Card, Skeleton, Button, EmptyState } from '@/design-system';
 import { useAuth } from '@/hooks/useAuth';
 import { Activity, Bell, FileText, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -13,7 +13,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
-  const { data: dashboardData, isLoading } = useQuery({
+  const { data: dashboardData, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
     queryFn: async () => { const res = await api.get('/dashboard'); return res.data.data.dashboard; },
   });
@@ -30,7 +30,21 @@ export default function DashboardPage() {
     enabled: isAdmin,
   });
 
-  if (isLoading) return <div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>;
+  if (isLoading) return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="space-y-1"><Skeleton className="h-7 w-40" /><Skeleton className="h-4 w-56 mt-1" /></div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24" />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><Skeleton className="h-72" /><Skeleton className="h-72" /></div>
+    </div>
+  );
+
+  if (isError) return (
+    <EmptyState title="Failed to load dashboard" description="There was an error loading your dashboard data. Please try refreshing." action={<Button onClick={() => window.location.reload()} variant="secondary" size="sm">Refresh</Button>} />
+  );
 
   const roleChartData = userAnalytics?.byRole?.map((r: any) => ({ name: r.role, value: r._count.id })) || [];
   const statusChartData = userAnalytics?.byStatus?.map((s: any) => ({ name: s.status, value: s._count.id })) || [];
@@ -90,7 +104,7 @@ export default function DashboardPage() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Recent Activity</h2>
-            <Link to="/app/settings" className="text-xs text-primary-600 hover:text-primary-700">View all</Link>
+            <Link to="/app/notifications" className="text-xs text-primary-600 hover:text-primary-700">View all</Link>
           </div>
           {dashboardData?.recentActivities?.length ? (
             <div className="space-y-3">
@@ -112,7 +126,6 @@ export default function DashboardPage() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Recent Files</h2>
-            <Link to="/app/settings" className="text-xs text-primary-600 hover:text-primary-700">View all</Link>
           </div>
           {dashboardData?.recentFiles?.length ? (
             <div className="space-y-3">

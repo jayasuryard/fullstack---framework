@@ -1,7 +1,6 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
 import { aiProvider } from '../ai/provider.js';
-import { buildChatMessages } from '../ai/promptManager.js';
 
 export async function createConversation(userId, title) {
   return prisma.conversation.create({

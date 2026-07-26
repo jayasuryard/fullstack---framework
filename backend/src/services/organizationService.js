@@ -1,5 +1,6 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
+import crypto from 'crypto';
 
 export async function createOrganization(data, userId) {
   const slug = data.slug || data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -56,7 +57,7 @@ export async function inviteMember(orgId, email, role, invitedBy) {
   });
   if (existing) throw ApiError.conflict('Invitation already sent');
 
-  const token = require('crypto').randomBytes(32).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   return prisma.invitation.create({
