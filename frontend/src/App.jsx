@@ -23,6 +23,8 @@ import { Loading } from './components/common'
 // ── Page imports — add yours here ────────────────────────────────────────────
 // import LoginPage from './pages/LoginPage'
 // import DashboardPage from './pages/dashboard/DashboardPage'
+import { lazy, Suspense } from 'react'
+const DesignGallery = lazy(() => import('./components/designs/Gallery'))
 
 // ── Role-default route helper (implement per product) ─────────────────────────
 // Replace the placeholder text below with real redirects once you have routes.
@@ -46,6 +48,18 @@ function AppRoutes() {
       {/* ── Public ──────────────────────────────────────────────────────────── */}
       {/* <Route path="/login" element={<LoginPage />} /> */}
       {/* <Route path="/public/*" element={<PublicPage />} /> */}
+
+      {/* ── Design Gallery — browse all 10 landing page templates ───────────── */}
+      <Route path="/designs" element={
+        <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#0D0D16', minHeight: '100vh' }}>Loading design gallery…</div>}>
+          <DesignGallery />
+        </Suspense>
+      } />
+      <Route path="/designs/:id" element={
+        <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#000', minHeight: '100vh' }}>Loading template…</div>}>
+          <DesignGallery />
+        </Suspense>
+      } />
 
       {/* ── Protected — add role-specific routes inside PrivateRoute ─────────── */}
       {/* Example:
