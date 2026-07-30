@@ -1,0 +1,76 @@
+// Base Prisma schema for the SaaS framework.
+// Contains only the models required by the framework's own code (auth, audit, job queue).
+// Add your product's domain models below the "── Product Models ──" marker.
+//
+// After editing:
+//   npm run gen:migration add_<description>   (development)
+//   npm run migrate:deploy                     (production/CI)
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../generated/prisma/client"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Framework Models ──────────────────────────────────────────────────────────
+
+model User {
+  id                   String         @id @default(cuid())
+  userName             String         @unique
+  email                String?        @unique
+  phone                String?
+  password             String
+  name                 String
+  role                 String
+  accessLevel          String         @default("read_write")
+  active               Boolean        @default(true)
+  isDeleted            Boolean        @default(false)
+  tokenVersion         Int            @default(0)
+  failedLoginAttempts  Int            @default(0)
+  lockedUntil          DateTime?
+  lastLoginAt          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  refreshTokens        RefreshToken[]
+  auditLogs            AuditLog[]
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  deviceInfo String?
+  ipAddress  String?
+  revoked    Boolean  @default(false)
+  expiredAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  userId    String?
+  userName  String?
+  userRole  String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ── Product Models ────────────────────────────────────────────────────────────
+// Add your domain-specific models here.
+// Use `npm run gen:model ModelName field:Type` to scaffold a new model.

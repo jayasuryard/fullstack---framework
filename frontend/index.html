@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!-- Open Graph — replace placeholders before shipping -->
+  <meta property="og:title"       content="__OG_TITLE__" />
+  <meta property="og:description" content="__OG_DESCRIPTION__" />
+  <meta property="og:image"       content="__OG_IMAGE__" />
+  <meta property="og:url"         content="__OG_URL__" />
+  <meta property="og:type"        content="website" />
+  <meta name="twitter:card"       content="summary_large_image" />
+  <meta name="twitter:title"      content="__OG_TITLE__" />
+  <meta name="twitter:description" content="__OG_DESCRIPTION__" />
+  <meta name="twitter:image"      content="__OG_IMAGE__" />
+
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" id="dynamic-favicon" href="/favicon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SaaS App</title>
+
+  <!--
+    Dynamic branding script (pattern from Product/frontend/index.html):
+    If your product is multi-tenant with per-tenant subdomains, paste the inline
+    branding script here. It detects the subdomain, fetches branding from the API,
+    and updates the title + favicon before React boots — so there's no visible flash.
+
+    See Product/frontend/index.html for the full implementation.
+    The API endpoint it calls: GET /api/v1/common/<tenant>/branding/<subdomain>
+  -->
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

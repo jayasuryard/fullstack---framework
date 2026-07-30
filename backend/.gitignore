@@ -1,0 +1,8 @@
+node_modules/
+.env
+logs/
+generated/
+prisma/migrations/
+
+# PM2 runtime
+.pm2/
