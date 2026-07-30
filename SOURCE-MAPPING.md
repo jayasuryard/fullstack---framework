@@ -1,132 +1,186 @@
-# Source Mapping
+# Framework File Reference
 
-Every framework pattern traced to its origin in `Product/`. Nothing in `Framework/` was invented.
+Every file in this repo, what it does, and what you need to customize per product.
+
+**Status legend**
+- ✅ Production-ready — use as-is
+- ⚙️ Configure — change constants / env vars only (no logic edits)
+- 🔌 Wire — add your product's implementations here
+- 📋 Stub — copy and implement for each domain feature
 
 ---
 
 ## Backend
 
-| Framework file | Source in Product/ | Notes |
-|---|---|---|
-| `backend/package.json` | `Product/backend/package.json` | Name changed; `engines` field added; same deps |
-| `backend/.env.example` | `Product/backend/` (env vars across config/middleware) | Generalized; product-specific provider vars removed |
-| `backend/server.js` | `Product/backend/server.js` | Product-specific crons, webhook pre-mount, and product name removed |
-| `backend/worker.js` | `Product/backend/worker.js` | Product-specific handler registrations removed |
-| `backend/ecosystem.config.js` | `Product/backend/ecosystem.config.js` | Process names replaced with `APP_NAME` placeholder |
-| `backend/start.sh` | `Product/backend/start.sh` | Product-specific seed calls removed; migrations + worker + server pattern preserved |
-| `backend/prisma.config.ts` | `Product/backend/prisma.config.ts` | Direct extraction (already fully generic) |
-| `backend/dockerfile` | `Product/backend/dockerfile` | Chromium system deps removed (product-specific); openssl + curl retained |
-| `backend/docker-compose.yml` | `Product/backend/docker-compose.yml` | Product image/container names replaced with `APP_NAME` placeholder |
-| `backend/.dockerignore` | `Product/backend/.dockerignore` | Direct extraction |
-| `backend/DOCKER.md` | `Product/backend/DOCKER.md` | Product-specific references and branding removed |
-| `backend/.github/workflows/deploy.yml` | `Product/backend/.github/workflows/deploy.yml` | ECR repo, container names, env file paths, seed exec calls replaced with `APP_NAME` |
-| `backend/.github/workflows/deploy-prod.yml` | `Product/backend/.github/workflows/deploy-prod.yml` | Same generalizations as deploy.yml |
-| `backend/config/dbConnect.js` | `Product/backend/config/dbConnect.js` | Direct extraction |
-| `backend/config/redisConfig.js` | `Product/backend/config/redisConfig.js` | Direct extraction |
-| `backend/config/s3.js` | `Product/backend/config/s3.js` | Direct extraction |
-| `backend/config/cloudinary.js` | `Product/backend/config/cloudinary.js` | Direct extraction |
-| `backend/globals/response.json` | `Product/backend/globals/response.json` | Direct extraction |
-| `backend/helpers/apiResponse.js` | `Product/backend/helpers/apiResponse.js` | Direct extraction |
-| `backend/helpers/paginate.js` | `Product/backend/helpers/paginate.js` | Direct extraction |
-| `backend/helpers/auditLogger.js` | `Product/backend/helpers/auditLogger.js` | Domain-scoped field removed; `extra` spread param added |
-| `backend/helpers/generateToken.js` | `Product/backend/helpers/generateToken.js` | Domain-specific JWT claims removed from base; `extraClaims` param added |
-| `backend/helpers/queue/jobQueue.js` | `Product/backend/helpers/queue/jobQueue.js` | Direct extraction |
-| `backend/helpers/queue/jobWsServer.js` | `Product/backend/helpers/queue/jobWsServer.js` | Domain-specific tenant ownership check replaced with generic `meta.userId` check |
-| `backend/middleware/verifyToken.js` | `Product/backend/middleware/verifyToken.js` | Product-specific role-elevation grant check removed |
-| `backend/middleware/role.js` | `Product/backend/middleware/role.js` | Direct extraction |
-| `backend/middleware/accessLevel.js` | `Product/backend/middleware/accessLevel.js` | Hardcoded role name removed; `readOnlyRoles` parameter added |
-| `backend/middleware/rateLimit.js` | `Product/backend/middleware/rateLimit.js` | Refactored into `createLimiter()` factory; same pre-built limiters |
-| `backend/middleware/upload.js` | `Product/backend/middleware/upload.js` | Direct extraction |
-| `backend/routes/index.js` | `Product/backend/routes/index.js` | Product module mounts removed; auth mount retained as example |
-| `backend/modules/auth/routes/authRoutes.js` | `Product/backend/modules/auth/routes/authRoutes.js` | Product-specific persona-switch routes removed |
-| `backend/modules/auth/services/AuthService.js` | `Product/backend/modules/auth/services/AuthService.js` | Domain-specific validation, entity fetching, and role-branching removed |
-| `backend/jobs/_stub.js` | `Product/backend/jobs/` (all cron files) | Structural pattern only; no business logic |
-| `backend/workers/_stub.js` | `Product/backend/workers/` (all worker handlers) | Structural pattern only; no business logic |
-| `backend/prisma/schema.prisma` | `Product/backend/prisma/schema.prisma` | Only `User`, `RefreshToken`, `AuditLog` extracted; all domain models omitted |
-| `backend/scripts/generateModule.js` | `Product/backend/scripts/generateModule.js` | Direct extraction (already generic) |
-| `backend/scripts/generateModel.js` | `Product/backend/scripts/generateModel.js` | Direct extraction (already generic) |
-| `backend/scripts/generateMigration.js` | `Product/backend/scripts/generateMigration.js` | Direct extraction |
-| `backend/scripts/deployMigration.js` | `Product/backend/scripts/deployMigration.js` | Direct extraction |
-| `backend/scripts/generatePostman.js` | `Product/backend/scripts/generatePostman.js` | Product-name strings ("LeadFlexUp") replaced with generic defaults |
-| `backend/scripts/createSuperAdmin.js` | `Product/backend/scripts/createSuperAdmin.js` | `schoolId` removed; `PasswordHash` → `password`; `lastlogin` → `lastLoginAt`; aligned with framework User schema |
+### Entry Points
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/server.js` | 🔌 | Express app, middleware, routes, WS hook, cron hook | Add webhook pre-routes, cron starts, WS attachments |
+| `backend/worker.js` | 🔌 | PM2 fork process, Redis BLPOP consumer | Register job handlers in the `handlers` map |
+| `backend/ecosystem.config.js` | ⚙️ | PM2 cluster (API) + fork (worker) config | Change `APP_NAME` constant at the top |
+| `backend/start.sh` | 🔌 | Container entrypoint: migrate → worker → server | Add `node seed/*.js` after migration if needed |
+
+### Deployment
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/dockerfile` | ⚙️ | node:22-slim, prisma generate, start.sh CMD | Add Chromium deps if product needs headless Chrome/PDF |
+| `backend/docker-compose.yml` | ⚙️ | Single-service compose (external DB + Redis) | Replace `APP_NAME`; update env file path |
+| `backend/.dockerignore` | ✅ | Excludes node_modules, IDE files, CI config | No changes needed |
+| `backend/DOCKER.md` | ✅ | Setup guide, scripts, secrets table, troubleshooting | No changes needed |
+| `backend/.github/workflows/deploy.yml` | ⚙️ | DEV blue-green: push to `deployment-dev` → ECR → EC2 | Replace `APP_NAME` in the env var and remote script |
+| `backend/.github/workflows/deploy-prod.yml` | ⚙️ | PROD blue-green: push `v*` tag → ECR → EC2 | Same `APP_NAME` replacements; add seed exec calls |
+| `backend/prisma.config.ts` | ✅ | Prisma 7 config (schema path, migrations path, DB URL) | No changes needed |
+
+### Config / Infrastructure
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/config/dbConnect.js` | ✅ | PrismaClient via `@prisma/adapter-pg` (pg.Pool) | Driven by `DATABASE_URL` — no code changes |
+| `backend/config/redisConfig.js` | ✅ | Redis client + getCache/setCache/deleteCache helpers | Driven by `REDIS_*` env vars — no code changes |
+| `backend/config/s3.js` | ✅ | AWS S3Client init | Driven by `AWS_*` env vars — no code changes |
+| `backend/config/cloudinary.js` | ✅ | Cloudinary v2 config | Driven by `CLOUDINARY_*` env vars — no code changes |
+| `backend/.env.example` | ⚙️ | All env var slots documented | Remove unused service vars (e.g. Cloudinary if not used) |
+
+### Data Model
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/prisma/schema.prisma` | 🔌 | `User`, `RefreshToken`, `AuditLog` base models | Add domain models below the `── Product Models ──` marker |
+| `backend/globals/response.json` | 🔌 | 15 response codes (1000–1014) | Add product-specific codes if the base set doesn't cover your cases |
+
+### Helpers
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/helpers/apiResponse.js` | ✅ | Builds `{ responseCode, responseMessage, responseData }` | No changes needed |
+| `backend/helpers/paginate.js` | ✅ | `page`/`limit`/`skip`/meta from `req.query` | No changes needed |
+| `backend/helpers/auditLogger.js` | ✅ | Writes one row to `AuditLog` table | No changes needed; pass extra fields via `extra` param |
+| `backend/helpers/generateToken.js` | ✅ | JWT access + refresh helpers, verify functions | Pass product-specific claims via `extraClaims` to `generateToken()` |
+| `backend/helpers/queue/jobQueue.js` | ✅ | Redis BLPOP queue: enqueue, status poll, progress reporting | No changes needed |
+| `backend/helpers/queue/jobWsServer.js` | 🔌 | WebSocket bridge: Redis pub/sub → browser for live job progress | Call `attachJobWsServer(server)` in `server.js`; customize ownership check if needed |
+
+### Middleware
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/middleware/verifyToken.js` | ✅ | Bearer JWT → populates `req.user` | Add per-request grant validation after tokenVersion check if needed |
+| `backend/middleware/role.js` | ✅ | RBAC guard: `role('admin', 'superAdmin')` | No changes needed |
+| `backend/middleware/accessLevel.js` | ✅ | Blocks `read_only` users on mutating routes | Pass `readOnlyRoles` array to block additional role names |
+| `backend/middleware/rateLimit.js` | ✅ | `loginLimiter`, `otpSendLimiter`, `generalLimiter` + `createLimiter()` factory | Uses in-memory store — swap for `rate-limit-redis` in PM2 cluster for shared limits |
+| `backend/middleware/upload.js` | ✅ | multer memoryStorage, 5 MB limit | No changes needed |
+
+### Auth Module
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/modules/auth/routes/authRoutes.js` | 🔌 | login, refresh, me, logout, profile, forgot/reset-password | Add product-specific routes (SSO, magic link, MFA) |
+| `backend/modules/auth/services/AuthService.js` | 🔌 | Full auth logic: lockout, token rotation, /me, profile, password reset stubs | Extend `buildUserPayload()`; wire the OTP email stub in `forgotPassword` + `resetPassword` |
+
+**Auth TODOs** (stubs in AuthService.js that need wiring before going live):
+- `forgotPassword` — generate OTP, store hashed OTP in DB, send via your email service
+- `resetPassword` — validate OTP against DB, check expiry, hash new password, increment `tokenVersion`
+
+### Routes & Scripts
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/routes/index.js` | 🔌 | Central router — mounts auth; placeholder for product modules | Add `router.use(...)` for every new module here |
+| `backend/scripts/generateModule.js` | ✅ | Scaffolds `modules/<name>/routes/` + `services/`, updates `routes/index.js` | No changes needed |
+| `backend/scripts/generateModel.js` | ✅ | Appends Prisma model to `schema.prisma` | No changes needed |
+| `backend/scripts/generateMigration.js` | ✅ | Runs `prisma migrate dev --name` | No changes needed |
+| `backend/scripts/deployMigration.js` | ✅ | Runs `prisma migrate deploy` (CI/CD) | No changes needed |
+| `backend/scripts/generatePostman.js` | ✅ | Scans `modules/`, generates Postman collection in `docs/` | No changes needed |
+| `backend/scripts/createSuperAdmin.js` | ✅ | Interactive CLI to seed the first super admin | No changes needed |
+
+### Stubs
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/jobs/_stub.js` | 📋 | Cron job template (node-cron) | Copy → rename → implement |
+| `backend/workers/_stub.js` | 📋 | Background job handler template | Copy → rename → implement → register in `worker.js` |
 
 ---
 
 ## Frontend
 
-| Framework file | Source in Product/ | Notes |
-|---|---|---|
-| `frontend/package.json` | `Product/frontend/package.json` | Name changed; same deps |
-| `frontend/vite.config.js` | `Product/frontend/vite.config.js` | Direct extraction |
-| `frontend/eslint.config.js` | `Product/frontend/eslint.config.js` | Direct extraction |
-| `frontend/index.html` | `Product/frontend/index.html` | Product branding script and favicon removed; OG placeholders retained |
-| `frontend/dockerfile` | `Product/frontend/dockerfile` | Direct extraction (already generic multi-stage build) |
-| `frontend/docker-compose.yml` | `Product/frontend/docker-compose.yml` | Product image/container names replaced with `APP_NAME` placeholder |
-| `frontend/nginx.conf` | `Product/frontend/nginx.conf` | Direct extraction (kept as alternative to Express server.js) |
-| `frontend/server.js` | `Product/frontend/server.js` | School-specific branding endpoint removed; configurable via `BRANDING_API_PATH` env var; default branding from env vars |
-| `frontend/.github/workflows/deploy.yml` | `Product/frontend/.github/workflows/deploy.yml` | ECR repo, container names replaced with `APP_NAME` |
-| `frontend/.github/workflows/deploy-prod.yml` | `Product/frontend/.github/workflows/deploy-prod.yml` | Same generalizations as deploy.yml |
-| `frontend/src/main.jsx` | `Product/frontend/src/main.jsx` | Direct extraction |
-| `frontend/src/App.jsx` | `Product/frontend/src/App.jsx` | All product page imports and route definitions removed; shell structure retained |
-| `frontend/src/index.css` | `Product/frontend/src/index.css` | Tailwind import only |
-| `frontend/src/components/PrivateRoute.jsx` | `Product/frontend/src/components/PrivateRoute.jsx` | Direct extraction |
-| `frontend/src/components/MainLayout.jsx` | `Product/frontend/src/components/MainLayout.jsx` | Product nav items, domain-specific components, and context-switch UI removed |
-| `frontend/src/components/MobileLayout.jsx` | `Product/frontend/src/components/MobileLayout.jsx` | Product nav items removed |
-| `frontend/src/components/common/` (17 files) | `Product/frontend/src/components/common/` | Direct copy for all generic UI primitives |
-| `frontend/src/components/common/index.js` | `Product/frontend/src/components/common/index.js` | Product-specific component exports removed |
-| `frontend/src/contexts/AuthContext.jsx` | `Product/frontend/src/contexts/AuthContext.jsx` | Domain-specific state, entity relationships, and role context switching removed |
-| `frontend/src/server/api.js` | `Product/frontend/src/server/api.js` | Product-specific constants and domain method namespaces removed |
-| `frontend/src/utils/subdomain.js` | `Product/frontend/src/utils/subdomain.js` | Direct extraction |
-| `frontend/src/hooks/useDataFetch.js` | Pattern across product hooks and inline page fetches | Generalized into standalone reusable hook |
-| `frontend/src/pages/_stub.jsx` | Pattern across all product pages | Structural template only; no business logic |
+### Build & Deployment
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `frontend/dockerfile` | ✅ | Multi-stage: Vite build → Express server | No changes needed |
+| `frontend/docker-compose.yml` | ⚙️ | Single frontend service on 8080:80 | Replace `APP_NAME` |
+| `frontend/nginx.conf` | ✅ | Alternative: plain nginx SPA static host (no OG injection) | Use instead of `server.js` if subdomain branding isn't needed |
+| `frontend/server.js` | ⚙️ | Express SPA server with per-subdomain OG meta injection | Set `APP_NAME`, `APP_DESCRIPTION`, `BRANDING_API_PATH` env vars |
+| `frontend/.github/workflows/deploy.yml` | ⚙️ | DEV: env file → Docker build → ECR → EC2 | Replace `APP_NAME` |
+| `frontend/.github/workflows/deploy-prod.yml` | ⚙️ | PROD: same on `v*` tag | Replace `APP_NAME` |
+| `frontend/vite.config.js` | ✅ | `plugins: [react(), tailwindcss()]` | No changes needed |
+| `frontend/eslint.config.js` | ✅ | ESLint 9 flat config | Add product-specific rules if needed |
+| `frontend/index.html` | ⚙️ | SPA shell with `__OG_TITLE__` / `__OG_DESCRIPTION__` / `__OG_IMAGE__` placeholders | Update `<title>` default; add product favicon |
+| `frontend/.env.example` | ⚙️ | `VITE_API_BASE_URL`, `VITE_APP_DOMAIN` | Fill in per environment |
+
+### Core React
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `frontend/src/main.jsx` | ✅ | React root mount | No changes needed |
+| `frontend/src/App.jsx` | 🔌 | BrowserRouter + AuthProvider + route definitions | Add all product page routes here |
+| `frontend/src/index.css` | ✅ | Tailwind CSS 4 import | Add global CSS if needed |
+
+### Auth & Context
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `frontend/src/contexts/AuthContext.jsx` | 🔌 | Global auth state, `login()`, `logout()`, `useAuth()` hook | Add role context switching or product-specific user fields if needed |
+
+### Components
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `frontend/src/components/PrivateRoute.jsx` | ✅ | Auth guard with `allowedRoles` prop | No changes needed |
+| `frontend/src/components/MainLayout.jsx` | 🔌 | Desktop sidebar shell | Define `NAV_ITEMS` array with your product's navigation |
+| `frontend/src/components/MobileLayout.jsx` | 🔌 | Mobile bottom-nav shell | Define `MOBILE_NAV_ITEMS` array |
+| `frontend/src/components/common/` | ✅ | 17 reusable UI primitives: Button, Input, Modal, Table, Card, Badge, Toast, Select, StatCard, SearchableSelect, PhoneInput, Calendar, Loading, ProfileModal, WelcomeBanner, Icon3D, useToast | No changes needed; extend individual components per product if needed |
+
+### Data & API
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `frontend/src/server/api.js` | 🔌 | Single API gateway, auth headers, 401 recovery, response unwrapping | Add product domain namespaces to the `api` object |
+| `frontend/src/hooks/useDataFetch.js` | ✅ | Generic data-fetch hook with loading/error state | No changes needed |
+| `frontend/src/utils/subdomain.js` | ✅ | Subdomain detection from hostname (multi-tenant support) | No changes needed |
+
+### Stubs
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `frontend/src/pages/_stub.jsx` | 📋 | Page component template | Copy → rename → implement |
 
 ---
 
-## Documentation & Config
+## Root Documentation
 
-| Framework file | Source in Product/ | Notes |
-|---|---|---|
-| `ARCHITECTURE.md` | — | Written from code observation; no direct source file |
-| `AGENTS.md` | — | Agent-facing context guide; no direct source file |
-| `.claude/CLAUDE.md` | — | Claude Code session context; no direct source file |
-
----
-
-## Explicitly NOT Extracted
-
-| What | Why not extracted |
-|---|---|
-| All feature modules | Business logic specific to the product's domain |
-| Cron job implementations | Product-specific scheduling logic |
-| Worker handler implementations | Product-specific job business logic |
-| Frontend page components | Product-specific UI and domain logic |
-| Email templates | Product-branded HTML and domain-specific content |
-| SMS/WhatsApp helper implementations | Product-specific notification triggers and provider config |
-| S3 helper, signed URLs, storage quota | Domain-specific storage model |
-| PDF generation helpers | Domain-specific document templates |
-| Payment client + OAuth onboarding | Payment provider's partner-onboarding business logic |
-| Product-specific role-elevation personas | Product domain — exam management role switching |
-| Domain models (50+) | All product-specific database entities |
-| Domain-specific globals | Domain configuration data |
-| Domain-specific React contexts | Product-specific state domains |
-| Demo login system | Product-specific demo infrastructure |
-| Product-specific UI components | Domain-specific UI (chatbot, child switcher, hierarchy selectors, etc.) |
-| WebSocket live feature server | Product-specific real-time feature (not the job progress bridge — that was extracted) |
+| File | Purpose |
+|------|---------|
+| `ARCHITECTURE.md` | Stack, folder ownership, naming conventions, module creation loop, security checklist |
+| `AGENTS.md` | Agent-facing project guide: file map, patterns, where to find things |
+| `.claude/CLAUDE.md` | Claude Code session context: hard rules, patterns, pitfalls, bootstrap checklist |
 
 ---
 
-## Open Questions / Gaps
+## Open Decisions
 
-Resolved gaps have been moved to the table above. The following still require a human decision.
+These are architectural choices the framework intentionally leaves to the product team.
 
-| # | Gap | What to decide |
-|---|-----|----------------|
-| 1 | **Rate limit store in cluster mode** | `express-rate-limit` uses in-memory store. With PM2 `instances: "max"`, each worker has its own counter. Decide whether to add a Redis-backed store (e.g. `rate-limit-redis`) for shared rate limiting across instances. |
-| 2 | **Input validation library** | All validation in `Product/` is manual inline checks. No Zod/Joi/express-validator used. Decide whether to introduce a schema-level validation library for future products. |
-| 3 | **Centralized error handler** | `Product/` catches errors per handler — no Express error boundary. Decide whether to introduce a centralized `app.use((err, req, res, next) => {...})` middleware. |
-| 4 | **Prisma Accelerate** | `@prisma/extension-accelerate` is installed in `Product/` but not activated in `dbConnect.js`. Confirm whether it is used in production; if so, wire it into the framework's `dbConnect.js`. |
-| 5 | **Cloudinary vs S3 routing** | Both are configured in `Product/` but the routing rule (which asset type goes where) was not determinable from code. Document the decision and encode it in a storage helper. |
-| 6 | **Email transport helper** | SES transport is framework concern; templates are product-specific. Decide whether to add a bare `sendEmail(to, subject, html)` helper (no templates) to `helpers/`. |
-| 7 | **Structured logging** | `Product/` uses `console.log/error` only. Decide whether to introduce Winston or Pino as a framework standard. |
-| 8 | **Testing framework** | `Product/` has no tests. Decide on a testing strategy and configure it in the framework before shipping products that require coverage. |
-| 9 | **Code formatter** | `Product/` has ESLint but no Prettier. Decide whether to add a formatter and which config to standardize on. |
+| # | Decision | Recommendation |
+|---|----------|---------------|
+| 1 | **Rate limit store in PM2 cluster** | In-memory by default (limit is per worker). Add `rate-limit-redis` for shared limits across all API instances. |
+| 2 | **Input validation library** | Currently manual inline checks in services. Add Zod at route level for schema validation if desired. |
+| 3 | **Centralized error handler** | Currently per-handler catch blocks. Add `app.use((err, req, res, next) => ...)` in `server.js` for a global fallback. |
+| 4 | **Prisma Accelerate** | Not active. Enable by calling `prisma.$extends(withAccelerate())` in `config/dbConnect.js`. |
+| 5 | **Cloudinary vs S3 routing** | Both configured. Decide per asset type: S3 for docs/exports, Cloudinary for images/media. Encode in a `helpers/storage.js`. |
+| 6 | **Email transport helper** | Not included. Add `helpers/emailService.js` wrapping AWS SES `SendEmailCommand` — required to complete the `forgotPassword` TODO in AuthService. |
+| 7 | **Structured logging** | `console.log/error` only. Add Pino or Winston in `server.js` if log aggregation (CloudWatch, Datadog) is needed. |
+| 8 | **Test framework** | None. Add Vitest (frontend) + Jest/Supertest (backend) when test coverage is required. |
+| 9 | **Code formatter** | ESLint only. Add Prettier + `eslint-config-prettier` if team formatting standards are needed. |

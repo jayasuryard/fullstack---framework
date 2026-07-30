@@ -1,6 +1,5 @@
 /**
  * Generic Redis-backed job queue with WebSocket progress streaming.
- * Source: Product/backend/helpers/queue/jobQueue.js (direct extraction — no business logic)
  *
  * Pattern: enqueueJob → worker BLPOP → handler(payload, { jobId, reportProgress }) → done/failed
  * Progress events are published to a Redis pub/sub channel so a WebSocket bridge can

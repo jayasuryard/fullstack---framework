@@ -1,7 +1,5 @@
 /**
  * Role-based access control middleware.
- * Source: Product/backend/middleware/role.js (direct extraction)
- *
  * Usage: router.get('/admin-only', verifyToken, role('admin', 'superAdmin'), handler)
  */
 const apiResponse = require('../helpers/apiResponse');

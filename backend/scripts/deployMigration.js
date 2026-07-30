@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Source: Product/backend/scripts/deployMigration.js (direct extraction — no changes)
 const { exec } = require('child_process');
 const path     = require('path');
 

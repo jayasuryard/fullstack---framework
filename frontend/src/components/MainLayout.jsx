@@ -1,11 +1,6 @@
 /**
  * Main desktop layout shell (sidebar + outlet).
- * Source: Product/frontend/src/components/MainLayout.jsx
- * Generalization: product-specific navigation items, module gating logic, and
- * branded components (VegaChatbot, DemoBanner) removed. The structural pattern —
- * collapsible sidebar, role-based nav, Outlet, profile modal — is preserved.
- *
- * To use: wrap role-specific routes with <MainLayout /> and define YOUR_NAV_ITEMS.
+ * To use: wrap role-specific routes with <MainLayout /> and define YOUR_NAV_ITEMS below.
  */
 import { useState } from 'react'
 import { Outlet, useNavigate, useLocation, NavLink } from 'react-router-dom'

@@ -1,4 +1,3 @@
-// Source: Product/frontend/src/utils/subdomain.js (direct extraction — no changes)
 // Multi-tenant subdomain detection. Works in both browser and Node (server.js).
 
 export function getSubdomain() {

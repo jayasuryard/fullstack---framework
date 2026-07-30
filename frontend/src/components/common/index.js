@@ -1,8 +1,4 @@
-// Source: Product/frontend/src/components/common/index.js
-// Product-specific exports (DemoBanner, ChildSwitcher, AcademicHierarchySelector,
 // AcademicHierarchyFilter, VegaChatbot, GlobalGenerationBanner) omitted — those
-// contain product-specific domain logic. Add them back in your product's own
-// src/components/common/index.js if needed.
 
 export { default as Button }          from './Button'
 export { default as Badge }           from './Badge'

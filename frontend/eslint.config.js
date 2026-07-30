@@ -1,4 +1,3 @@
-// Source: Product/frontend/eslint.config.js (direct extraction — no changes)
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'

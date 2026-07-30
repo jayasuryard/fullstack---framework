@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Source: Product/backend/scripts/generateModel.js (direct extraction — no changes)
 const fs   = require('fs');
 const path = require('path');
 

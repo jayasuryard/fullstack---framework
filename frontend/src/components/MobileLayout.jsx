@@ -1,7 +1,6 @@
 /**
  * Mobile layout shell (bottom nav + outlet).
- * Source: Product/frontend/src/components/MobileLayout.jsx (structural pattern extracted)
- * Generalization: product-specific nav items removed — define YOUR_MOBILE_NAV_ITEMS below.
+ * Define YOUR_MOBILE_NAV_ITEMS below (keep to 4–5 items max).
  */
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'

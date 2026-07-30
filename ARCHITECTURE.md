@@ -251,7 +251,7 @@ import { FeaturePage } from './pages/feature/FeaturePage'
 2. **Implement** your handler function
 3. **Register** in `worker.js`: add `'<queue>:<action>': handle<Feature>` to the `handlers` map
 4. **Enqueue** from any service: `await enqueueJob('<queue>:<action>', { ...payload })`
-5. **Optionally stream progress** to the browser using the WebSocket pattern from `Product/backend/helpers/queue/jobWsServer.js`
+5. **Optionally stream progress** to the browser — attach `attachJobWsServer(server)` in `server.js` using `helpers/queue/jobWsServer.js`
 
 ---
 

@@ -1,13 +1,9 @@
 /**
  * Auth context — global auth state, login, logout, token management, role/access flags.
- * Source: Product/frontend/src/contexts/AuthContext.jsx
- * Generalization: school-specific fields, coordinator assignment fetching, parent-child
- * link handling, and context-switching (examCoordinator/invigilator personas) removed.
- * The core pattern — localStorage hydration, /me validation on load, automatic token
- * refresh on 401, cross-origin session handoff — is preserved intact.
  *
- * If your product needs role context switching (like the product's examCoordinator),
- * add switchContext / clearContext back here following the same pattern.
+ * Pattern: localStorage hydration → /me validation on mount → automatic 401 recovery.
+ * To add role context switching (e.g. impersonation, tenant switching), extend this
+ * context with switchContext / clearContext following the same pattern.
  */
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from 'react'

@@ -1,8 +1,6 @@
 /**
  * Background job handler stub — copy this file to add a new job type.
- * Source: Product/backend/workers/ (pattern extracted from all worker handlers)
- *
- * Naming convention:  <domain><Action>JobHandler.js   e.g. feeReceiptNotifyJobHandler.js
+ * Naming convention:  <domain><Action>JobHandler.js   e.g. invoiceNotifyJobHandler.js
  *
  * Register the handler in worker.js:
  *   const { handle<Feature> } = require('./workers/<domain><Action>JobHandler');

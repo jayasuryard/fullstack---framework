@@ -1,6 +1,5 @@
 /**
  * Auth routes.
- * Source: Product/backend/modules/auth/routes/authRoutes.js (generalized)
  *
  * POST /common/auth/login
  * POST /common/auth/refresh

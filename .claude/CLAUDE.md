@@ -1,102 +1,92 @@
-# Claude Code Context — Framework/
+# Claude Code Context
 
 ## What this is
 
-`Framework/` is a reusable SaaS scaffold extracted from a production codebase (`Product/`).
-When you work in this directory you are either:
+A production-grade SaaS scaffold. Use it to build new SaaS products by adding domain modules on top of the ready-made auth, infrastructure, and deployment system.
 
-1. **Bootstrapping a new product** — rename files, fill in domain models, implement business logic
-2. **Improving the framework itself** — generalizing patterns, filling gaps, improving DX
+## Stack (at a glance)
 
-## Hard Rules (never break these)
+- **Backend**: Node.js 22, Express 5, Prisma 7 (`@prisma/adapter-pg`), PostgreSQL, Redis 5
+- **Auth**: JWT (24h access + 7d refresh, single-use rotation), bcrypt
+- **Queue**: Custom Redis BLPOP (not BullMQ) + node-cron
+- **Frontend**: React 19, React Router 7, Vite 7 (SWC), Tailwind CSS 4 (Vite plugin — no config file)
+- **State**: React Context + useState — no Redux, no Zustand, no React Query
+- **HTTP**: Native `fetch` — no axios on the frontend
+
+## Engineering rules
 
 | Rule | Detail |
 |------|--------|
-| `Product/` is **READ-ONLY** | Never create, edit, delete, or reformat anything inside `Product/`. It is the reference source. |
-| All work goes in `Framework/` | No exceptions. |
-| No invented patterns | Every framework pattern must trace to `Product/`. Gaps are flagged, not filled with guesses. |
-| No TypeScript | Plain `.js` / `.jsx` only. |
-| No test framework | `Product/` has zero tests. Don't add them unless explicitly asked. |
-| No Prettier | ESLint 9 flat config only (`eslint.config.js`). |
-
-## Project structure
-
-```
-Framework/
-├── backend/   Node.js + Express 5 + Prisma 7 + Redis 5
-└── frontend/  React 19 + Vite 7 + Tailwind CSS 4
-```
-
-See `AGENTS.md` for the full directory layout and `ARCHITECTURE.md` for the complete stack reference.
-
-## Tech stack (at a glance)
-
-- **Backend**: Node.js 22, Express 5, Prisma 7 (`@prisma/adapter-pg`), PostgreSQL, Redis 5
-- **Auth**: JWT (24h access + 7d refresh with single-use rotation), bcrypt
-- **Queue**: Custom Redis BLPOP (not BullMQ) + node-cron for scheduled tasks
-- **Frontend**: React 19, React Router 7, Vite 7 (SWC), Tailwind CSS 4 (Vite plugin)
-- **State**: React Context + useState — no Redux, no Zustand, no React Query
-- **HTTP**: Native `fetch` — no axios on the frontend
+| No TypeScript | Plain `.js` / `.jsx` only |
+| No test framework | Don't add tests unless explicitly asked |
+| No Prettier | ESLint 9 flat config only (`eslint.config.js`) |
+| No comments explaining what | Only add comments for non-obvious WHY (constraints, workarounds) |
+| No unnecessary abstractions | Three similar lines > premature abstraction |
+| No error handling for impossible cases | Trust framework guarantees; validate only at system boundaries |
 
 ## Key patterns
 
 ### API response envelope
 ```js
-// Every response: { responseCode, responseMessage, responseData: { result } }
-const { response } = require("./helpers/apiResponse");
-response(res, 1000, { users: [...] });
+// Backend: every response goes through this
+const apiResponse = require('./helpers/apiResponse');
+res.json(apiResponse.response('SUCCESS', { items: [...] }));
+// → { responseCode: 1000, responseMessage: '...', responseData: { result: { items } } }
 ```
-Codes are in `backend/globals/response.json` (1000–1014).
+Codes are in `backend/globals/response.json`.
 
 ### Auth middleware chain
 ```js
-router.get("/resource", verifyToken, role("admin", "manager"), handler);
+router.get('/items',   verifyToken, role('admin'),                    list);
+router.post('/items',  verifyToken, role('admin'), requireReadWrite(), create);
 ```
 
-### Module creation
+### Add a new module
 ```bash
-npm run gen:module <name>   # scaffolds routes + service + updates routes/index.js
+npm run gen:module <name>        # scaffolds routes + service, updates routes/index.js
 npm run gen:model <Name> field:Type ...
 npm run gen:migration add_<name>
 ```
 
-### Background jobs
+### Background job
 ```js
-const jobId = await enqueueJob("jobType", payload, { userId: req.user.id });
-// Worker picks it up. Client streams progress via ws://.../ws/jobs/:jobId?token=<jwt>
+// Enqueue:
+const { jobId } = await enqueueJob('queue:action', payload, { userId: req.user.id });
+// Handler: copy workers/_stub.js, register in worker.js
+// Stream progress: attach attachJobWsServer(server) in server.js
 ```
 
-## What to check before touching auth
+## What to touch before first run
 
-The auth system is production-grade. Before changing anything in:
-- `helpers/generateToken.js` — understand tokenVersion invalidation
-- `modules/auth/services/AuthService.js` — lockout + refresh rotation
-- `middleware/verifyToken.js` — tokenVersion check is intentional
+1. `backend/ecosystem.config.js` — change `APP_NAME`
+2. `backend/docker-compose.yml` — replace `APP_NAME`
+3. `backend/.github/workflows/deploy*.yml` — replace `APP_NAME`
+4. `frontend/docker-compose.yml` — replace `APP_NAME`
+5. `frontend/.github/workflows/deploy*.yml` — replace `APP_NAME`
+6. `backend/.env.example` → copy to `.env`, fill in all values
+7. `frontend/.env.example` → copy to `.env`, fill in values
+8. `backend/package.json` — rename `saas-framework-backend`
 
-## Bootstrapping a new product from this framework
+## What needs wiring before production
 
-1. Copy `Framework/` to a new directory
-2. Replace `APP_NAME` in `docker-compose.yml`, GitHub Actions workflows
-3. Rename `saas-framework-backend` in `package.json`
-4. Set env vars per `.env.example`
-5. Create your Prisma models (`npm run gen:model`)
-6. Run migrations (`npm run gen:migration initial_schema`)
-7. Create first super admin (`npm run create:superadmin`)
-8. Scaffold your first module (`npm run gen:module <name>`)
-9. Implement business logic in `modules/<name>/services/`
-10. Add routes to `modules/<name>/routes/<name>Routes.js`
+- `AuthService.js` — `forgotPassword` and `resetPassword` have TODOs; need email service + OTP storage
+- `backend/server.js` — uncomment `attachJobWsServer(server)` if using live job progress
+- `MainLayout.jsx` and `MobileLayout.jsx` — define `NAV_ITEMS` with your product's navigation
+- `frontend/src/App.jsx` — add all product page routes
+- `frontend/src/server/api.js` — add product domain namespaces to the `api` object
 
 ## Common pitfalls
 
-- **Prisma 7** uses `@prisma/adapter-pg` driver adapter — do NOT use the old `datasource` URL pattern without it. See `config/dbConnect.js`.
-- **Tailwind CSS 4** uses the Vite plugin, not a config file. Adding `tailwind.config.js` will break it.
-- **React Router 7** — use `createBrowserRouter` or `<BrowserRouter>` patterns from v7. Legacy v5 patterns don't work.
-- **Express 5** — async route handlers throw errors automatically (no `try/catch` + `next(err)` needed for unhandled promises).
-- **Redis 5** — uses the `redis` npm package v5 with `await client.connect()`. Not `ioredis`.
-- **No sticky sessions** — PM2 cluster mode + Redis-backed auth/jobs means any instance can handle any request.
+- **Prisma 7** uses `@prisma/adapter-pg` — the `new PrismaClient({ adapter })` pattern in `config/dbConnect.js`. Don't change this.
+- **Tailwind CSS 4** uses the Vite plugin. Don't add `tailwind.config.js` — it breaks things.
+- **React Router 7** — use v7 patterns. Legacy v5 patterns break.
+- **Express 5** — async handlers auto-throw; no `try/catch` + `next(err)` needed for unhandled rejections.
+- **Redis 5** — uses `redis` npm package v5 with `await client.connect()`. Not ioredis.
+- **PM2 cluster** — in-memory rate limits are per-worker. Use `rate-limit-redis` if cross-worker shared limits are required.
+- **No sticky sessions needed** — Redis-backed auth and jobs work across all PM2 instances.
 
-## Files to update after adding features
+## Files to update when you add features
 
-- `SOURCE-MAPPING.md` — add traceability for any new Framework file
-- `AGENTS.md` — update the directory layout table if you add new directories
-- `ARCHITECTURE.md` — update env vars section if you add new config
+- `SOURCE-MAPPING.md` — add new files to the reference table with their status
+- `AGENTS.md` — update directory layout if new directories are added
+- `ARCHITECTURE.md` — update env vars section if new env vars are introduced

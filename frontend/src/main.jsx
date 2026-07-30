@@ -1,4 +1,3 @@
-// Source: Product/frontend/src/main.jsx (direct extraction — no changes)
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

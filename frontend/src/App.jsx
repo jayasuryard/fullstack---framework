@@ -1,8 +1,5 @@
 /**
  * Application root — router + providers.
- * Source: Product/frontend/src/App.jsx (generalized: all product-specific page imports
- * and routes removed; the shell structure — AuthProvider, BrowserRouter, PrivateRoute,
- * role-based route segments — is preserved as a template).
  *
  * How to add routes:
  *   1. Import your page component.

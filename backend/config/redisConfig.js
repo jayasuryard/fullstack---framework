@@ -1,5 +1,4 @@
 // Redis client + cache helpers.
-// Source: Product/backend/config/redisConfig.js
 const redis = require('redis');
 
 const client = redis.createClient({

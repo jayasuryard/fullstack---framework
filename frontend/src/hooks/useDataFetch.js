@@ -1,7 +1,5 @@
 /**
- * Generic data-fetch hook — mirrors the pattern used throughout product/ pages.
- * Source: Extracted pattern from Product/frontend/src/hooks/useClasses.js
- *         and dozens of inline useEffect data-fetches in product pages.
+ * Generic data-fetch hook.
  *
  * Usage:
  *   const { data, loading, error, refetch } = useDataFetch(

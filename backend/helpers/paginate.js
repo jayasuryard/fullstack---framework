@@ -1,6 +1,5 @@
 /**
  * Reusable Prisma pagination helper.
- * Source: Product/backend/helpers/paginate.js
  *
  * Usage:
  *   const { skip, take, meta } = paginate(req.query);

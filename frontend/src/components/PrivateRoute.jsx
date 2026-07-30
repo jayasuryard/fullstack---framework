@@ -1,4 +1,3 @@
-// Source: Product/frontend/src/components/PrivateRoute.jsx (direct extraction — no changes)
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Loading } from '../components/common'

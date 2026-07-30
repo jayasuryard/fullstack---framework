@@ -1,26 +1,21 @@
 /**
- * Central API client.
- * Source: Product/frontend/src/server/api.js
- * Generalization: product-specific constants (SUPER_ADMIN_PLAN_OPTIONS, SUPER_ADMIN_MODULES,
- * MODULE_KEY_ORDER, MODULE_KEY_ALIASES, getDefaultRouteForRole, getRoleRouteSegment, and all
- * domain-specific API method namespaces) removed. The core client machinery is preserved intact.
+ * Central API client. All backend calls go through this file.
  *
- * What this file provides:
- *  - fetch wrapper with auth headers, JSON serialization, FormData detection, path param
- *    interpolation, query string serialization
- *  - Automatic token refresh on 401 (singleton refreshPromise to avoid duplicate calls)
- *  - ApiError class with status, url, payload
- *  - Response unwrapping (responseCode → throws on non-1000/1012)
+ * Provides:
+ *  - fetch wrapper with auth headers, JSON/FormData, path params, query strings
+ *  - Automatic token refresh on 401 (singleton refreshPromise — no duplicate calls)
+ *  - ApiError class with responseCode, url, payload
+ *  - Response unwrapping (responseCode 1000/1012 = success; anything else throws)
  *  - localStorage session helpers: setAuthSession, clearAuthSession, getStoredToken, etc.
- *  - Namespaced `api` object — add your product's domain methods to it
+ *  - Namespaced `api` object — add your product's domain methods below
  *
- * To add a new API namespace in your product:
+ * To add a new domain namespace:
  *   api.myFeature = {
- *     list:   (query)       => request('GET',  '/admin/my-feature', {}, query),
- *     get:    ({ id })      => request('GET',  '/admin/my-feature/:id', { id }),
- *     create: (body)        => request('POST', '/admin/my-feature', {}, {}, body),
- *     update: ({ id, ...b}) => request('PUT',  '/admin/my-feature/:id', { id }, {}, b),
- *     delete: ({ id })      => request('DELETE','/admin/my-feature/:id', { id }),
+ *     list:   (query)        => request('GET',    '/admin/my-feature',     {}, query),
+ *     get:    ({ id })       => request('GET',    '/admin/my-feature/:id', { id }),
+ *     create: (body)         => request('POST',   '/admin/my-feature',     {}, {}, body),
+ *     update: ({ id, ...b }) => request('PUT',    '/admin/my-feature/:id', { id }, {}, b),
+ *     delete: ({ id })       => request('DELETE', '/admin/my-feature/:id', { id }),
  *   }
  */
 
