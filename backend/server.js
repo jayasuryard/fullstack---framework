@@ -1,8 +1,5 @@
-/**
- * Express application entry point.
- * Source: Product/backend/server.js (generalized: product-specific crons, webhook
- * pre-routes, and product naming removed — add them back in your product).
- */
+// Express application entry point.
+// Wires middleware, routes, WebSocket servers, and cron jobs.
 const express = require('express');
 const http    = require('http');
 const cors    = require('cors');

@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+dockerfile
+docker-compose*.yml
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+__tests__/
+test/
+*.test.js
+*.spec.js
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Logs
+logs/
+*.log
+
+# Prisma migrations (already copied separately)
+# prisma/migrations/
+
+# Generated files (will be regenerated via prisma generate at build time)
+generated/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml

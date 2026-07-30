@@ -1,8 +1,6 @@
 /**
  * Cron job stub — copy this file to add a scheduled task.
- * Source: Product/backend/jobs/ (pattern extracted from all 9 cron jobs)
- *
- * Naming convention:  <domain><Action>Cron.js   e.g. feeReminderCron.js
+ * Naming convention:  <domain><Action>Cron.js   e.g. invoiceReminderCron.js
  *
  * Schedule syntax: node-cron (standard cron with optional seconds field)
  *   '0 8 * * *'   → 8:00 AM every day

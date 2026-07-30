@@ -1,12 +1,6 @@
-/**
- * JWT access-token + refresh-token helpers.
- * Source: Product/backend/helpers/generateToken.js (generalized: product-specific fields
- * like schoolId/staffId/studentId removed from the base payload — add them in AuthService
- * for your product by passing `extraClaims` to generateToken).
- *
- * Core payload: id, role, baseRole (for context switching), accessLevel, tokenVersion.
- * Add product-specific claims via the `extraClaims` parameter.
- */
+// JWT access-token + refresh-token helpers.
+// Core payload: id, role, baseRole (for context switching), accessLevel, tokenVersion.
+// Add product-specific JWT claims by passing an `extraClaims` object to generateToken().
 const jwt = require('jsonwebtoken');
 
 /**

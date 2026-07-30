@@ -1,5 +1,5 @@
 // Unified response envelope builder.
-// Source: Product/backend/helpers/apiResponse.js
+// Keys map to globals/response.json. Usage: apiResponse.response('SUCCESS', data)
 const responseConfig = require('../globals/response.json');
 
 function response(key, data = {}) {

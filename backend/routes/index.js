@@ -1,7 +1,5 @@
 /**
  * Central route aggregator.
- * Source: Product/backend/routes/index.js (template — product routes removed)
- *
  * Convention: /api/v1/<actor>/<resource>
  * Mount each module's router here after verifyToken + role() guards.
  *

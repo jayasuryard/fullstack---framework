@@ -1,0 +1,38 @@
+version: "3.8"
+
+# Replace APP_NAME with your product name throughout this file before deploying.
+
+services:
+
+  app:
+    container_name: APP_NAME-api
+
+    image: APP_NAME-api:latest
+    # To build locally instead:
+    # build:
+    #   context: .
+    #   dockerfile: dockerfile
+
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    # Env file lives outside the repo on the host — never commit secrets
+    env_file:
+      - /home/ubuntu/apps/env/APP_NAME.env
+
+    environment:
+      NODE_ENV: production
+
+    # Lets the container reach host-machine services (local DB/Redis during dev)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - app-net
+
+
+networks:
+  app-net:
+    driver: bridge

@@ -1,11 +1,8 @@
 /**
  * Read-only access enforcement middleware.
- * Source: Product/backend/middleware/accessLevel.js
- * Generalization: removed hardcoded "management" role name. Products that have a
- * read-only virtual role should add that check after the accessLevel check, or
- * pass `readOnlyRoles` to configure it without touching this file.
- *
  * Place AFTER role() on any mutating route (POST / PUT / PATCH / DELETE).
+ * Pass `readOnlyRoles` to block additional role names that are always read-only
+ * (e.g. ['management', 'viewer'] for your product).
  */
 const apiResponse = require('../helpers/apiResponse');
 

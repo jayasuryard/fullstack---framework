@@ -1,10 +1,5 @@
 /**
  * JWT authentication middleware.
- * Source: Product/backend/middleware/verifyToken.js
- * Generalization: removed product-specific context-grant validation
- * (examCoordinator/invigilator). If your product needs role-elevation
- * grants validated on every request, add that check here after the
- * tokenVersion check, following the same pattern.
  *
  * Checks (in order):
  *  1. Authorization: Bearer <token> header present
@@ -14,6 +9,7 @@
  *
  * Populates req.user with the full DB row plus effective role/accessLevel
  * from the token (supports context-switched tokens where role !== baseRole).
+ * To add product-specific per-request grant validation, add it after the tokenVersion check.
  */
 const jwt        = require('jsonwebtoken');
 const apiResponse = require('../helpers/apiResponse.js');

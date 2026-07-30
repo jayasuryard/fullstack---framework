@@ -1,8 +1,7 @@
 /**
  * Rate-limit middleware factory.
- * Source: Product/backend/middleware/rateLimit.js (generalized into a factory)
  *
- * Pre-built limiters (tune via env or override windowMs/max):
+ * Pre-built limiters (tune windowMs/max as needed):
  *   loginLimiter          — 5 req / 15 min (auth brute-force protection)
  *   otpSendLimiter        — 3 req / 1 hr   (OTP / forgot-password abuse)
  *   generalLimiter        — 200 req / min per authenticated user

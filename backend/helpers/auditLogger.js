@@ -1,11 +1,9 @@
 /**
  * Audit logger — writes one row to the AuditLog table.
- * Source: Product/backend/helpers/auditLogger.js (generalized: removed schoolId assumption)
- *
  * @param {string} action   Human-readable label, e.g. "USER_LOGIN", "PASSWORD_RESET"
  * @param {object} user     req.user (must have id, name, role)
  * @param {object} req      Express request (for ip + userAgent)
- * @param {object} extra    Any additional flat key-value pairs for the product to store
+ * @param {object} extra    Any additional flat key-value pairs to store
  */
 const prisma = require('../config/dbConnect');
 

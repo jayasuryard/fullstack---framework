@@ -1,5 +1,4 @@
-// Prisma client backed by a native pg.Pool.
-// Source: Product/backend/config/dbConnect.js
+// Prisma client backed by a native pg.Pool via @prisma/adapter-pg driver adapter.
 const { PrismaClient } = require('../generated/prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const { Pool } = require('pg');

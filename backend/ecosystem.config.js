@@ -1,12 +1,6 @@
-/**
- * PM2 process configuration.
- * Source: Product/backend/ecosystem.config.js (generalized: product name replaced with placeholder)
- * Replace APP_NAME with your product's name before deploying.
- *
- * Usage:
- *   pm2 start ecosystem.config.js
- *   pm2 save && pm2 startup
- */
+// PM2 process configuration.
+// Replace APP_NAME with your product's name before deploying.
+// Usage: pm2 start ecosystem.config.js && pm2 save && pm2 startup
 const APP_NAME = 'my-app';  // ← change this
 
 module.exports = {
