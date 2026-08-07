@@ -15,7 +15,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-3 right-3 flex h-7 items-center gap-1 rounded-md bg-white/10 px-2 text-xs text-neutral-400 hover:bg-white/20 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+      className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-neutral-400 hover:text-neutral-100 hover:bg-white/10 transition-colors"
     >
       {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
     </button>
@@ -61,16 +61,9 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
             }
 
             return (
-              <div className="relative my-6 rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-800 group">
-                <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      <div className="h-2.5 w-2.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                      <div className="h-2.5 w-2.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                      <div className="h-2.5 w-2.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                    </div>
-                    <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 ml-2">{match?.[1] || 'code'}</span>
-                  </div>
+              <div className="relative my-6 rounded-lg overflow-hidden border border-neutral-800 bg-[#0d1117]">
+                <div className="flex items-center justify-between px-4 h-9 bg-[#161b22] border-b border-neutral-800/60">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">{match?.[1] || 'code'}</span>
                   <CopyButton text={codeString} />
                 </div>
                 <SyntaxHighlighter
@@ -83,6 +76,7 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
                     fontSize: '13px',
                     background: 'transparent',
                     padding: '1rem 1.25rem',
+                    overflowX: 'auto',
                   }}
                 >
                   {codeString}

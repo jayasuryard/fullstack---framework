@@ -1,23 +1,25 @@
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { ArrowRight, Zap, Shield, Users, Bot, CreditCard, FileText, Moon, Sun, Github, ChevronRight, Sparkles } from 'lucide-react';
+import { ArrowRight, Zap, Shield, Users, CreditCard, FileText, ChevronRight, Sparkles } from 'lucide-react';
 
 const features = [
-  { icon: Shield, title: 'Authentication', desc: 'JWT, OAuth, RBAC, MFA', color: 'from-blue-500 to-cyan-500' },
-  { icon: Bot, title: 'AI Integration', desc: 'GROQ streaming, prompts', color: 'from-violet-500 to-purple-500' },
-  { icon: CreditCard, title: 'Billing', desc: 'Subscriptions, invoices', color: 'from-emerald-500 to-teal-500' },
-  { icon: Users, title: 'Teams & Orgs', desc: 'Multi-tenant ready', color: 'from-orange-500 to-amber-500' },
-  { icon: Zap, title: 'Performance', desc: 'Optimized, cached', color: 'from-pink-500 to-rose-500' },
-  { icon: FileText, title: 'File Storage', desc: 'S3, thumbnails, validation', color: 'from-indigo-500 to-blue-500' },
+  { icon: Shield, title: 'Authentication', desc: 'JWT + opaque refresh rotation, lockout', color: 'from-blue-500 to-cyan-500' },
+  { icon: FileText, title: 'Background Jobs', desc: 'Redis queue, 3 retries, progress', color: 'from-violet-500 to-purple-500' },
+  { icon: Zap, title: 'Realtime', desc: 'WebSocket hub, live job channels', color: 'from-emerald-500 to-teal-500' },
+  { icon: Users, title: 'Roles & Access', desc: 'role guards, read-only levels', color: 'from-orange-500 to-amber-500' },
+  { icon: CreditCard, title: 'Payments', desc: 'Razorpay adapter, unwired by default', color: 'from-pink-500 to-rose-500' },
+  { icon: Sparkles, title: 'Generators', desc: 'module, model, migration scripts', color: 'from-indigo-500 to-blue-500' },
 ];
 
-const codeSnippet = `const app = new RyoFramework({
-  ai: { provider: 'groq' },
-  auth: { providers: ['google', 'github'] },
-  database: { url: process.env.DATABASE_URL }
-});
+const codeSnippet = `import { enqueueJob } from './helpers/queue/jobQueue.js';
 
-await app.generate('Build a CRM SaaS');`;
+const { jobId } = await enqueueJob(
+  'invoice:send-pdf',
+  { invoiceId },
+  { userId: req.user.id }
+);
+
+// live progress → emitToChannel('job:' + jobId, ...)`;
 
 function TypewriterCode() {
   const [displayed, setDisplayed] = useState('');
@@ -41,22 +43,16 @@ function TypewriterCode() {
 }
 
 export default function Hero() {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-  }, [dark]);
-
   return (
-    <div className="min-h-screen dark:bg-[#0a0a0c]">
+    <div className="min-h-screen bg-[#0a0a0c]">
       {/* Navbar */}
       <header className="fixed top-0 left-0 right-0 z-50 glass-strong border-b border-neutral-200/60 dark:border-neutral-800/60">
         <div className="mx-auto max-w-7xl h-16 flex items-center justify-between px-5">
           <Link to="/" className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 text-sm font-bold text-white shadow-lg shadow-primary-500/25">
-              RF
+              SF
             </div>
-            <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50">RyoFramework</span>
+            <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50">SaaS Framework</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {[
@@ -64,21 +60,13 @@ export default function Hero() {
               { label: 'Architecture', to: '/docs/architecture' },
               { label: 'Frontend', to: '/docs/frontend/overview' },
               { label: 'Backend', to: '/docs/backend/overview' },
-              { label: 'AI', to: '/docs/ai/overview' },
+              { label: 'AI/ML', to: '/docs/ai/overview' },
             ].map(link => (
               <Link key={link.to} to={link.to} className="text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 transition-colors">
                 {link.label}
               </Link>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setDark(!dark)} className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800 transition-all">
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <a href="https://github.com/ryoforge/ryoframework" target="_blank" rel="noopener noreferrer" className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800 transition-all">
-              <Github className="h-4 w-4" />
-            </a>
-          </div>
         </div>
       </header>
 
@@ -91,7 +79,7 @@ export default function Hero() {
         <div className="relative mx-auto max-w-5xl px-5 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary-50 dark:bg-primary-950/50 border border-primary-200 dark:border-primary-800/50 text-primary-700 dark:text-primary-300 text-xs font-medium mb-8 animate-fade-in">
             <Sparkles className="h-3.5 w-3.5" />
-            AI-First Production SaaS Framework
+            Production SaaS Framework
           </div>
 
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-neutral-900 dark:text-white mb-6 animate-fade-in" style={{ animationDelay: '100ms' }}>
@@ -102,8 +90,8 @@ export default function Hero() {
           </h1>
 
           <p className="text-lg sm:text-xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-in" style={{ animationDelay: '200ms' }}>
-            RyoFramework converts your business requirements into production-ready code.
-            Auth, billing, teams, AI — everything built-in and deployable.
+            Express 5 + Prisma 7 backend, React 19 frontend, Redis queue and realtime.
+            Auth, jobs, and deployment are production-ready; your product is the modules.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in" style={{ animationDelay: '300ms' }}>
@@ -176,12 +164,12 @@ export default function Hero() {
       <footer className="py-10 border-t border-neutral-200/60 dark:border-neutral-800/60">
         <div className="mx-auto max-w-6xl px-5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-primary-500 to-primary-700 text-[10px] font-bold text-white">RF</div>
-            <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">&copy; {new Date().getFullYear()} RyoForge. All rights reserved.</span>
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-primary-500 to-primary-700 text-[10px] font-bold text-white">SF</div>
+            <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">&copy; {new Date().getFullYear()} SaaS Framework. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-6">
             <Link to="/docs/introduction" className="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors">Docs</Link>
-            <a href="https://github.com/ryoforge/ryoframework" target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors">GitHub</a>
+            <Link to="/docs/architecture" className="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors">Architecture</Link>
           </div>
         </div>
       </footer>

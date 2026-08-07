@@ -7,12 +7,13 @@
     @apply border-neutral-200 dark:border-neutral-800;
   }
   body {
-    @apply bg-white text-neutral-900 dark:bg-[#0a0a0c] dark:text-neutral-50 antialiased;
+    @apply bg-[#0a0a0c] text-neutral-50 antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
   html {
     scroll-behavior: smooth;
     scroll-padding-top: 5rem;
+    color-scheme: dark;
   }
   ::selection {
     @apply bg-primary-200 text-primary-900 dark:bg-primary-800 dark:text-primary-50;

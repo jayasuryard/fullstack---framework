@@ -3,16 +3,16 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { docEntries } from '@/App';
 import SearchModal from '@/components/SearchModal';
-import { Menu, X, Moon, Sun, Github, ChevronRight, Search, Command } from 'lucide-react';
+import { Menu, X, ChevronRight, Search, Command } from 'lucide-react';
 
 const groups = [
-  { label: 'Getting Started', emoji: '🚀', prefixes: ['introduction', 'installation', 'project-structure'] },
-  { label: 'Architecture', emoji: '🏗️', prefixes: ['architecture', 'design', 'rules'] },
-  { label: 'Frontend', emoji: '🎨', prefixes: ['frontend'] },
-  { label: 'Backend', emoji: '⚙️', prefixes: ['backend'] },
-  { label: 'AI', emoji: '🤖', prefixes: ['ai'] },
-  { label: 'Reference', emoji: '📚', prefixes: ['api', 'database', 'security', 'testing', 'deployment', 'faq', 'troubleshooting'] },
-  { label: 'Development', emoji: '🛠️', prefixes: ['phases', 'memory', 'agents', 'contributing', 'roadmap', 'changelog', 'decisions'] },
+  { label: 'Getting Started', prefixes: ['introduction', 'installation', 'project-structure'] },
+  { label: 'Architecture', prefixes: ['architecture', 'design', 'rules'] },
+  { label: 'Frontend', prefixes: ['frontend'] },
+  { label: 'Backend', prefixes: ['backend'] },
+  { label: 'AI/ML', prefixes: ['ai'] },
+  { label: 'Reference', prefixes: ['api', 'database', 'security', 'testing', 'deployment', 'faq', 'troubleshooting'] },
+  { label: 'Development', prefixes: ['phases', 'memory', 'agents', 'contributing', 'roadmap', 'changelog', 'decisions'] },
 ];
 
 function getGroupForDoc(slug: string): string {
@@ -54,10 +54,10 @@ function Sidebar({ open, onClose, onSearch }: { open: boolean; onClose: () => vo
         <div className="flex items-center justify-between h-16 px-5 border-b border-neutral-200/60 dark:border-neutral-800/60">
           <Link to="/" className="flex items-center gap-3 group" onClick={onClose}>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 text-sm font-bold text-white shadow-lg shadow-primary-500/25 group-hover:shadow-primary-500/40 transition-shadow">
-              RF
+              SF
             </div>
             <div>
-              <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50 block leading-tight">RyoFramework</span>
+              <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50 block leading-tight">SaaS Framework</span>
               <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Docs</span>
             </div>
           </Link>
@@ -99,7 +99,6 @@ function Sidebar({ open, onClose, onSearch }: { open: boolean; onClose: () => vo
                       : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100/50 dark:hover:bg-neutral-800/50'
                   )}
                 >
-                  <span className="text-sm">{group.emoji}</span>
                   <span className="flex-1 text-left">{group.label}</span>
                   <ChevronRight className={cn('h-3 w-3 transition-transform duration-200', isExpanded && 'rotate-90')} />
                 </button>
@@ -146,12 +145,7 @@ function Sidebar({ open, onClose, onSearch }: { open: boolean; onClose: () => vo
 }
 
 function Navbar({ onMenuToggle, onSearch }: { onMenuToggle: () => void; onSearch: () => void }) {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const location = useLocation();
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-  }, [dark]);
 
   // Find current doc for breadcrumb
   const currentDoc = docEntries.find(d => location.pathname.includes(d.slug));
@@ -184,25 +178,6 @@ function Navbar({ onMenuToggle, onSearch }: { onMenuToggle: () => void; onSearch
             <Command className="h-2 w-2" />K
           </kbd>
         </button>
-        <button
-          onClick={() => setDark(!dark)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800 transition-all"
-          title={dark ? 'Switch to light' : 'Switch to dark'}
-        >
-          <div className="relative h-4 w-4">
-            <Sun className={cn('absolute inset-0 h-4 w-4 transition-all duration-300', dark ? 'opacity-0 rotate-90 scale-0' : 'opacity-100 rotate-0 scale-100')} />
-            <Moon className={cn('absolute inset-0 h-4 w-4 transition-all duration-300', dark ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-0')} />
-          </div>
-        </button>
-        <a
-          href="https://github.com/ryoforge/ryoframework"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800 transition-all"
-          title="GitHub"
-        >
-          <Github className="h-4 w-4" />
-        </a>
       </div>
     </header>
   );

@@ -9,7 +9,7 @@ const groups = [
   { label: 'Architecture', prefixes: ['architecture', 'design', 'rules'] },
   { label: 'Frontend', prefixes: ['frontend'] },
   { label: 'Backend', prefixes: ['backend'] },
-  { label: 'AI', prefixes: ['ai'] },
+  { label: 'AI/ML', prefixes: ['ai'] },
   { label: 'Reference', prefixes: ['api', 'database', 'security', 'testing', 'deployment', 'faq', 'troubleshooting'] },
   { label: 'Development', prefixes: ['phases', 'memory', 'agents', 'contributing', 'roadmap', 'changelog', 'decisions'] },
 ];

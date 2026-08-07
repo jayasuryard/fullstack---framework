@@ -1,127 +1,35 @@
 # Changelog
 
-All notable changes to RyoFramework are documented in this file.
+Notable changes to the framework.
 
-## 1.0.0 (2026-07-22)
+## 2026-08 — Auth hardening
 
-Initial release of RyoFramework — the AI-first production SaaS framework.
+- Refresh tokens switched from JWTs to **opaque `randomBytes(48)`** values stored as sha256 `tokenHash` (unique). Fixes a collision bug where a deterministic JWT collided on the unique index every second login and broke rotation.
+- Single-use refresh rotation: each refresh consumes the presented token and issues a new pair; reuse revokes the chain.
+- Lockout: 5 consecutive failures → `lockedUntil` 15 min; `1008 ACCOUNT_LOCKED`.
+- Timing-safe login: bcrypt `DUMMY_HASH` compare when the user is missing (no user enumeration).
+- `tokenVersion` session kill switch; `verifyToken` checks version + active + soft-delete.
+- Redis OTP password reset: 6-digit, 10 min TTL, 5 attempts, per-user rate limit.
 
-### Features
+## 2026-07 — Reliability and rate limiting
 
-#### Authentication & Security
-- Email/password authentication with bcrypt password hashing (cost factor 12)
-- JWT-based access tokens (15-minute expiry) and refresh tokens (7-day expiry)
-- Refresh token rotation with automatic theft detection
-- OAuth 2.0 integration for 5 providers: Google, Facebook, Apple, Microsoft, Twitter/X
-- Multi-factor authentication (TOTP) setup, verification, and disable
-- Email verification flow with resend capability
-- Password reset via email with secure tokens
-- Login attempt tracking for brute force protection
-- Account lockout after failed attempts
+- Rate limiter rebuilt as `createLimiter()` factory with Redis-backed `HybridStore` and per-limiter prefixes (`rl:login:`, `rl:otp:`, `rl:refresh:`, `rl:general:`); in-memory sliding-window fallback in dev.
+- Production boot guard: `server.js` refuses to start when Redis is unreachable (15 s race).
+- `api.js` singleton refresh: HTTP 401 or envelope 1010 triggers one refresh, retry once, no refresh loops.
+- Upload validation: MIME + extension allowlist, magic-byte sniff, SVG rejected, 5 MB cap.
 
-#### Authorization
-- Role-based access control with 5 roles: SUPER_ADMIN, ADMIN, MANAGER, MEMBER, VIEWER
-- Granular permission system (action + resource model with RolePermission join table)
-- Static role hierarchy fallback for common operations
-- Permission middleware (`can(action, resource)`)
+## 2026-06 — Realtime and jobs
 
-#### User Management
-- User registration, login, and profile management
-- User listing with pagination (ADMIN+)
-- User update and soft delete (SUPER_ADMIN only)
-- Account status management (PENDING, ACTIVE, SUSPENDED, BANNED)
-- Profile fields: name, email, avatar, phone, role, status
+- Redis BLPOP job queue (`helpers/queue/jobQueue.js`): enqueue/status/progress, 3 retries, stuck-job recovery on worker start.
+- Shared WS hub (`helpers/ws/hub.js`): `attachWsHub` + `emitToChannel` over Redis pub/sub; job progress channel `/ws/jobs/:jobId`.
+- Frontend `wsClient` + `useWebSocket` with reconnect backoff.
+- Audit logging helper + 90-day purge cron.
 
-#### Organizations & Teams
-- Multi-tenant organization structure
-- Organization CRUD with member management
-- Team sub-grouping within organizations
-- Member invitations with token-based acceptance
-- Role assignment per organization context
-- Soft delete for organizations
+## 2026-06 — Foundation
 
-#### AI Integration
-- GROQ API integration for chat completions (llama3-70b-8192 model)
-- Server-Sent Events (SSE) streaming for real-time AI responses
-- Provider abstraction layer (`AIProvider` class)
-- Prompt management system with typed prompts (default, codeReview, architecture, database)
-- AI service functions: generateResponse, generateStreamingResponse, codeReview, generateSchema
-- Mock mode for development without API key
-- Conversation persistence with Message history
-- Token usage tracking per request
-
-#### Billing
-- Subscription plan definitions (Free, Pro, Enterprise)
-- Plan limits and feature configuration
-- Customizable pricing and billing intervals
-- Subscription lifecycle management
-- Invoice generation and payment tracking
-- Multiple payment method support
-- Coupon/discount code system
-- Usage record tracking for metered billing
-
-#### File Management
-- File upload with multer (memory storage, 10MB limit)
-- MIME type whitelisting (images, PDF, CSV)
-- S3-compatible storage integration
-- UUID-based file naming to prevent collisions
-- File download with streaming
-- Soft delete for files
-
-#### Notifications
-- In-app notification system with read/unread status
-- Notification channel preferences (in_app, email, push)
-- Notification templates with variable support
-- Bulk mark-as-read functionality
-- Per-type notification channel configuration
-
-#### API Infrastructure
-- Express.js RESTful API with 20+ route groups
-- Zod-based input validation with descriptive error messages
-- Global rate limiting (100 requests/15 min) with per-endpoint configuration
-- Helmet.js security headers
-- CORS with configurable origin
-- Compression middleware (gzip)
-- Structured JSON error responses with field-level validation details
-- Pagination support for list endpoints
-- Health check endpoint (`GET /api/health`)
-- Morgan HTTP request logging
-
-#### Database
-- Prisma ORM with PostgreSQL 16
-- 25+ models covering all application domains
-- Comprehensive indexing strategy (foreign keys, filters, sorts, unique constraints)
-- UUID primary keys throughout
-- Soft delete pattern (`deletedAt` fields)
-- Database migration workflow
-- Seed data for development (admin user, demo user, plans, permissions)
-
-#### Frontend
-- React 18 with TypeScript (strict mode)
-- Vite build tooling with hot module replacement
-- Tailwind CSS with custom design system
-- Radix UI primitives (accordion, checkbox, dialog, dropdown, popover, radio, select, separator, slider, switch, tabs, toast, tooltip)
-- TanStack Query (React Query) for server state management
-- React Hook Form with Zod schema validation
-- Axios HTTP client with interceptors
-- GSAP animations with Lenis smooth scrolling
-- Lucide React icons
-- Recharts for data visualization
-- React Router v6 with lazy loading
-- React Hot Toast for notifications
-- clsx utility for conditional classes
-
-#### Deployment
-- Multi-stage Docker builds for backend (Node 24 Alpine) and frontend (Nginx)
-- Docker Compose configuration with PostgreSQL, backend, and frontend services
-- Nginx reverse proxy with SPA routing and API proxying
-- GitHub Actions CI/CD workflow (test, build, deploy)
-- Health checks for database dependency management
-- Structured JSON logging with log level configuration
-- Environment variable management with .env.example
-
-### Notes
-
-- This is the initial release — see the [Roadmap](/development/roadmap) for upcoming features
-- Breaking changes may occur in minor versions before 2.0.0
-- Migration guides will be provided for each breaking change
+- Express 5 API, Prisma 7 with `@prisma/adapter-pg` + `prisma.config.ts`.
+- Base schema: User, RefreshToken, AuditLog.
+- Envelope responses (`responseCode` 1000–1014) + `globals/response.json`.
+- Module generators (`gen:module`, `gen:model`, `gen:migration`), super admin script.
+- React 19 SPA: lazy routes, manualChunks, common component barrel, 10 landing templates.
+- Blue-green deploy pipeline (dev + prod) via GitHub Actions → ECR → EC2.
