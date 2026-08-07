@@ -115,7 +115,7 @@ export default function DesignGallery() {
         <div className="text-center mb-14">
           <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-5"
             style={{ background: 'rgba(99,102,241,0.15)', color: '#818CF8', border: '1px solid rgba(99,102,241,0.25)' }}>
-            SaaS Framework · Design Templates
+            Ryo Framework · Design Templates
           </span>
           <h1 className="text-5xl font-bold text-white mb-4" style={{ letterSpacing: '-0.025em' }}>
             10 Premium Landing Page Systems

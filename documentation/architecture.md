@@ -2,7 +2,7 @@
 
 ## Overview
 
-RyoFramework is a full-stack SaaS framework built with a modern client-server architecture. The stack consists of a **React SPA** frontend (built with Vite) communicating with an **Express.js** REST API over HTTP, backed by a **PostgreSQL** database accessed through the **Prisma ORM**. The framework is designed with AI capabilities as a first-class concern, featuring an integrated AI chat subsystem powered by Groq.
+RyoFramework is a full-stack Ryo Framework built with a modern client-server architecture. The stack consists of a **React SPA** frontend (built with Vite) communicating with an **Express.js** REST API over HTTP, backed by a **PostgreSQL** database accessed through the **Prisma ORM**. The framework is designed with AI capabilities as a first-class concern, featuring an integrated AI chat subsystem powered by Groq.
 
 ```
 ┌─────────────────────────────────────────────────────────┐

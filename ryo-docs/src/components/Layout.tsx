@@ -57,7 +57,7 @@ function Sidebar({ open, onClose, onSearch }: { open: boolean; onClose: () => vo
               SF
             </div>
             <div>
-              <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50 block leading-tight">SaaS Framework</span>
+              <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50 block leading-tight">Ryo Framework</span>
               <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Docs</span>
             </div>
           </Link>

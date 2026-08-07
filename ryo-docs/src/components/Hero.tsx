@@ -52,7 +52,7 @@ export default function Hero() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 text-sm font-bold text-white shadow-lg shadow-primary-500/25">
               SF
             </div>
-            <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50">SaaS Framework</span>
+            <span className="text-sm font-bold text-neutral-900 dark:text-neutral-50">Ryo Framework</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {[
@@ -79,7 +79,7 @@ export default function Hero() {
         <div className="relative mx-auto max-w-5xl px-5 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary-50 dark:bg-primary-950/50 border border-primary-200 dark:border-primary-800/50 text-primary-700 dark:text-primary-300 text-xs font-medium mb-8 animate-fade-in">
             <Sparkles className="h-3.5 w-3.5" />
-            Production SaaS Framework
+            Production Ryo Framework
           </div>
 
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-neutral-900 dark:text-white mb-6 animate-fade-in" style={{ animationDelay: '100ms' }}>
@@ -165,7 +165,7 @@ export default function Hero() {
         <div className="mx-auto max-w-6xl px-5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-primary-500 to-primary-700 text-[10px] font-bold text-white">SF</div>
-            <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">&copy; {new Date().getFullYear()} SaaS Framework. All rights reserved.</span>
+            <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">&copy; {new Date().getFullYear()} Ryo Framework. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-6">
             <Link to="/docs/introduction" className="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 transition-colors">Docs</Link>

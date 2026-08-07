@@ -1,4 +1,4 @@
-// Base Prisma schema for the SaaS framework.
+// Base Prisma schema for the Ryo Framework.
 // Contains only the models required by the framework's own code (auth, audit, job queue).
 // Add your product's domain models below the "── Product Models ──" marker.
 //

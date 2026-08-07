@@ -170,7 +170,7 @@ Native support for the Model Context Protocol enabling standardized AI tool inte
 
 ### Year 1: Foundation (Current)
 
-Establish RyoFramework as the go-to AI-first SaaS framework with a solid foundation of authentication, billing, teams, and AI integration.
+Establish RyoFramework as the go-to AI-first Ryo Framework with a solid foundation of authentication, billing, teams, and AI integration.
 
 ### Year 2: Ecosystem
 

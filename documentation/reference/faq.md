@@ -4,7 +4,7 @@
 
 ### What is RyoFramework?
 
-RyoFramework is an AI-first production SaaS framework that helps developers build full-stack SaaS applications quickly. It provides a pre-built backend (Express.js, Prisma, PostgreSQL), frontend (React, Vite, Tailwind, TypeScript), and integrated AI capabilities powered by GROQ.
+RyoFramework is an AI-first production Ryo Framework that helps developers build full-stack SaaS applications quickly. It provides a pre-built backend (Express.js, Prisma, PostgreSQL), frontend (React, Vite, Tailwind, TypeScript), and integrated AI capabilities powered by GROQ.
 
 ### Who is RyoFramework for?
 

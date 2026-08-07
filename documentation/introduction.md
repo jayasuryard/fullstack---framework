@@ -1,6 +1,6 @@
 # Introduction to RyoFramework
 
-RyoFramework is an **AI-first production SaaS framework** built by RyoForge. It provides a complete, opinionated foundation for building modern SaaS applications with integrated AI capabilities, multi-tenant architecture, and production-grade infrastructure out of the box.
+RyoFramework is an **AI-first production Ryo Framework** built by RyoForge. It provides a complete, opinionated foundation for building modern SaaS applications with integrated AI capabilities, multi-tenant architecture, and production-grade infrastructure out of the box.
 
 ---
 

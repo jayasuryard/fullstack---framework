@@ -4,7 +4,7 @@ All notable changes to RyoFramework are documented in this file.
 
 ## 1.0.0 (2026-07-22)
 
-Initial release of RyoFramework — the AI-first production SaaS framework.
+Initial release of RyoFramework — the AI-first production Ryo Framework.
 
 ### Features
 

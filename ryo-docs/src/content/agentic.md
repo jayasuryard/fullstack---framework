@@ -6,21 +6,7 @@ How AI coding agents (Claude Code, Cursor, Copilot, Codex, ...) work with this f
 
 The framework has no AI runtime, no LLM SDK, no `GROQ_API_KEY`. What it does ship is a **contract for agents**: machine-readable guides, deterministic generators, strict conventions, and automated gates. An agent reads the contract, follows the module loop, and produces code that passes the same gates a human's code must pass.
 
-```
-agent reads  AGENTS.md + SOURCE-MAPPING.md + ARCHITECTURE.md
-        │
-        ▼
-agent runs  generators (gen:module / gen:model / gen:migration)
-        │
-        ▼
-agent writes  service → routes → api.js → page → App.jsx
-        │
-        ▼
-gates catch  lint → unit tests → integration tests → typecheck → build
-        │
-        ▼
-human reviews  diff + commit
-```
+![Agentic development flow](/AgenticFlow.png)
 
 ## Why It Works
 
@@ -158,7 +144,7 @@ backend/worker.js. No emojis. Then run npm run build in ryo-docs.
 ## Verified Agent Workflow (SOP)
 
 ```text
-Role: senior engineer on the SaaS Framework.
+Role: senior engineer on the Ryo Framework.
 Read AGENTS.md, SOURCE-MAPPING.md, ARCHITECTURE.md first.
 Task: <one feature, scoped>
 Constraints:
