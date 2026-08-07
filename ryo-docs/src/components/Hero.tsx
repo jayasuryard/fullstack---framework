@@ -60,7 +60,7 @@ export default function Hero() {
               { label: 'Architecture', to: '/docs/architecture' },
               { label: 'Frontend', to: '/docs/frontend/overview' },
               { label: 'Backend', to: '/docs/backend/overview' },
-              { label: 'AI/ML', to: '/docs/ai/overview' },
+              { label: 'Agentic', to: '/docs/agentic' },
             ].map(link => (
               <Link key={link.to} to={link.to} className="text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 transition-colors">
                 {link.label}
