@@ -131,7 +131,7 @@ Each item: `location` — problem → fix → **preferred outcome**.
 - **Outcome:** bounded memory per request. Verify: 5mb JSON POST → 413/400.
 
 ### Y11. Docs drift (agents trust docs)
-- **Status: PARTIAL (2026-08-07).** AGENTS.md + ARCHITECTURE.md auth sections now state opaque refresh tokens, per-limiter Redis prefixes, Redis-down degrade/fail-fast, `apiResponse.send()`. Remaining: SOURCE-MAPPING.md + `.claude/CLAUDE.md` refresh; module-loop code sample in ARCHITECTURE updated to `send(res,'SERVER_ERROR')`.
+- **Status: DONE (2026-08-07).** AGENTS.md + ARCHITECTURE.md auth sections state opaque refresh tokens, per-limiter Redis prefixes, Redis-down degrade/fail-fast, `apiResponse.send()`. SOURCE-MAPPING.md + `.claude/CLAUDE.md` refreshed same session: rateLimit row = HybridStore + per-limiter prefixes, generateToken = opaque refresh, response code count (14, 1009 retired), Open Decisions 3/7 = done (error middleware, pino), CLAUDE stack/pitfalls = opaque tokens + `Promise.race` boot + integration-suite infra (fw-test-pg/-redis).
 - "17 primitives" ≠ 16 exports; "No TypeScript" vs 6k TSX + prisma.config.ts + tsconfig; auth "ready" vs no login UI.
 - Fix: reconcile AGENTS.md/ARCHITECTURE.md/SOURCE-MAPPING.md/CLAUDE.md with fixed code; delete dead tsconfig or add typecheck script.
 - **Outcome:** docs pass "read-then-do" test.
@@ -192,13 +192,13 @@ Each item: `location` — problem → fix → **preferred outcome**.
 
 - **B1.** ~~`dbConnect.js` false "Database connected successfully" log (Prisma lazy).~~ **DONE:** log removed (no fake connectivity).
 - **B2.** ~~Duplicate `ERROR`(1009)/`SERVER_ERROR`(1005).~~ **DONE:** all 8 `ERROR` call sites → `SERVER_ERROR`; key removed from registry + HTTP map (code 1009 retired, codes stable).
-- **B3.** `frontend/src/components/common/PhoneInput.jsx` dead + lint-warning source + counted in docs. → Delete or wire.
-- **B4.** `frontend/index.html:18` `<title>SaaS App</title>` hardcoded; branding script is commented pattern. → Template title like OG; ship inline branding script.
-- **B5.** `frontend/vite.config.js` single 475KB chunk. → `manualChunks` + lazy routes.
-- **B6.** `frontend/dockerfile` `COPY public … || true` swallows missing `public/` (favicon 404). → Create `public/` with favicon + og-default.png + logo.png.
+- **B3.** ~~`frontend/src/components/common/PhoneInput.jsx` dead + lint-warning source + counted in docs.~~ **DONE:** wired into `common/index.js` barrel (`PhoneInput`, `formatPhoneForApi`) — tree-shaken, zero bundle cost; docs count consistent again.
+- **B4.** ~~`frontend/index.html:18` `<title>SaaS App</title>` hardcoded; branding script is commented pattern.~~ **DONE:** `<title>__OG_TITLE__</title>` (server.js injects per-subdomain); inline branding script shipped for static-host/nginx path — default title when placeholder survives + favicon from OG image.
+- **B5.** ~~`frontend/vite.config.js` single 475KB chunk.~~ **DONE:** `manualChunks` (`vendor-react`, `vendor-anim`, `vendor-icons`) + all pages lazy (`LoginPage`, `ForgotPasswordPage`, `ResetPasswordPage`, `DashboardPage`, `Gallery`) behind one `Suspense`. Build: main 193KB (was 475KB), vendors cached separately, recharts/react-calendar tree-shaken out.
+- **B6.** ~~`frontend/dockerfile` `COPY public … || true` swallows missing `public/` (favicon 404).~~ **DONE:** `frontend/public/` created with `favicon.png` (64×64), `logo.png` (256×256), `og-default.png` (1200×630) — indigo placeholders, copied to `dist/` by Vite; dockerfile COPY now finds real files.
 - **B7.** ~~`frontend/server.js` default PORT 80 → root-only container.~~ **DONE:** default 8080; dockerfile EXPOSE 8080 + `USER node` non-root + healthcheck port; compose `8080:8080`.
 - **B8.** ~~`server.js` `BigInt.prototype.toJSON` global mutation.~~ **DONE:** local BigInt→Number serializer inside `apiResponse.send()`; global untouched.
-- **B9.** `backend/scripts/generateModel.js` accepts invalid types → broken schema. → Type whitelist + `prisma validate` after write.
+- **B9.** ~~`backend/scripts/generateModel.js` accepts invalid types → broken schema.~~ **DONE:** type whitelist (`String/Int/Float/Boolean/DateTime/Json/Decimal/BigInt/Bytes` + `?`/`[]`), any bad field aborts before write (exit 1); `npx prisma validate` after append with dummy `DATABASE_URL` fallback (no .env needed), rollback + exit 1 on invalid schema. Verified: bad type → rejected, good model (`String/Float?/String[]`) → appended + validated.
 - **B10.** ~~No `node --check` smoke in CI.~~ **DONE:** backend `npm run lint` syntax gate in CI (covers it).
 - **B11.** ~~`frontend/.env.example` missing VITE_APP_DOMAIN tenant note.~~ **DONE:** env var documented; `utils/subdomain.js` comment ties it to the tenant-root-domain concept.
 - **B12.** ~~`server.js` cron section empty.~~ **DONE:** token-purge cron shipped (`jobs/purgeExpiredTokens.js`, 03:00 daily).

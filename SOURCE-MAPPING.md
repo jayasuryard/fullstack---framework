@@ -48,16 +48,16 @@ Every file in this repo, what it does, and what you need to customize per produc
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
 | `backend/prisma/schema.prisma` | 🔌 | `User`, `RefreshToken`, `AuditLog` base models | Add domain models below the `── Product Models ──` marker |
-| `backend/globals/response.json` | 🔌 | 15 response codes (1000–1014) | Add product-specific codes if the base set doesn't cover your cases |
+| `backend/globals/response.json` | 🔌 | 14 response codes (1000–1014, 1009 retired) | Add product-specific codes if the base set doesn't cover your cases |
 
 ### Helpers
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `backend/helpers/apiResponse.js` | ✅ | Builds `{ responseCode, responseMessage, responseData }` | No changes needed |
+| `backend/helpers/apiResponse.js` | ✅ | `response(key, data)` builds the envelope; `send(res, key, data, status)` sends it with HTTP status; BigInt serialized to Number locally (no global mutation) | No changes needed |
 | `backend/helpers/paginate.js` | ✅ | `page`/`limit`/`skip`/meta from `req.query` | No changes needed |
 | `backend/helpers/auditLogger.js` | ✅ | Writes one row to `AuditLog` table | No changes needed; pass extra fields via `extra` param |
-| `backend/helpers/generateToken.js` | ✅ | JWT access + refresh helpers, verify functions | Pass product-specific claims via `extraClaims` to `generateToken()` |
+| `backend/helpers/generateToken.js` | ✅ | JWT access token + **opaque** refresh token (`randomBytes(48)` base64url — never a JWT, avoids `tokenHash` collisions), `verifyAccessToken` | Pass product-specific claims via `extraClaims` to `generateToken()` |
 | `backend/helpers/queue/jobQueue.js` | ✅ | Redis BLPOP queue: enqueue, status poll, progress reporting, 3 retries, `recoverStuckJobs()` on worker start | Progress events go through the WS hub (`emitToChannel('job:<id>')`) |
 | `backend/helpers/queue/jobWsServer.js` | ✅ | `/ws/jobs/:jobId` — thin job-specific shim over the shared hub | Ownership enforced: WS refused unless `job.meta.userId` matches token; snapshot sent as first event |
 | `backend/helpers/ws/hub.js` | ✅ | Reusable WS emitter/receiver: `attachWsHub(server)` (generic `/ws`), `emitToChannel(channel, payload)` (Redis pub/sub relay, cluster-safe), per-channel `authorizeChannel`/`snapshotFor` hooks | Add product channels; customize auth via options |
@@ -70,7 +70,7 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `backend/middleware/verifyToken.js` | ✅ | Bearer JWT → populates `req.user` | Add per-request grant validation after tokenVersion check if needed |
 | `backend/middleware/role.js` | ✅ | RBAC guard: `role('admin', 'superAdmin')` | No changes needed |
 | `backend/middleware/accessLevel.js` | ✅ | Blocks `read_only` users on mutating routes | Pass `readOnlyRoles` array to block additional role names |
-| `backend/middleware/rateLimit.js` | ✅ | `loginLimiter`, `otpSendLimiter`, `generalLimiter` + `createLimiter()` factory | Redis-backed store (`rate-limit-redis`, prefix `rl:`) — shared across PM2 cluster. Redis outage → limited routes error until client reconnects (no in-memory fallback); startup race avoided by awaiting `redisReady` before listen |
+| `backend/middleware/rateLimit.js` | ✅ | `loginLimiter`, `otpSendLimiter`, `refreshLimiter`, `generalLimiter` + `createLimiter()` factory | Hybrid `HybridStore`: Redis-backed (`rate-limit-redis`, per-limiter prefixes `rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:`) shared across PM2 cluster, in-memory sliding-window fallback if Redis drops (re-inits store on reconnect, clears memory counters on recovery). Server boot waits on `redisReady` (15s race) |
 | `backend/middleware/upload.js` | ✅ | multer memoryStorage, 5 MB limit | No changes needed |
 
 ### Auth Module
@@ -78,7 +78,7 @@ Every file in this repo, what it does, and what you need to customize per produc
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
 | `backend/modules/auth/routes/authRoutes.js` | 🔌 | login, refresh, me, logout, profile, forgot/reset-password | Add product-specific routes (SSO, magic link, MFA) |
-| `backend/modules/auth/services/AuthService.js` | ✅ | Full auth logic: lockout, token rotation, /me, profile, forgot/reset-password via Redis OTP | Extend `buildUserPayload()` for product-specific user fields |
+| `backend/modules/auth/services/AuthService.js` | ✅ | Full auth logic: lockout (5 strikes → 15-min `lockedUntil`), opaque refresh-token rotation (lookup by `tokenHash` + `revoked`/`expiredAt`; expiry lives in the DB row), /me, profile, forgot/reset-password via Redis OTP | Extend `buildUserPayload()` for product-specific user fields |
 
 **Auth flow — done:** `forgotPassword` generates a 6-digit OTP, stores its hash in Redis (`auth:reset:otp:<email>`, 10-min TTL), emails via `emailService` (send failure logged, never surfaced). `resetPassword` caps attempts per email (5), validates hash, updates password, bumps `tokenVersion`, revokes ALL refresh tokens (kills pre-reset sessions end-to-end).
 
@@ -177,12 +177,12 @@ These are architectural choices the framework intentionally leaves to the produc
 
 | # | Decision | Recommendation |
 |---|----------|---------------|
-| 1 | **Rate limit store in PM2 cluster** | ✅ Done — Redis-backed via `rate-limit-redis` (prefix `rl:`), in-memory fallback if Redis down. |
+| 1 | **Rate limit store in PM2 cluster** | ✅ Done — HybridStore: Redis-backed (`rate-limit-redis`, per-limiter prefixes `rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:`), in-memory sliding-window fallback if Redis down. |
 | 2 | **Input validation library** | Currently manual inline checks in services. Add Zod at route level for schema validation if desired. |
-| 3 | **Centralized error handler** | Currently per-handler catch blocks. Add `app.use((err, req, res, next) => ...)` in `server.js` for a global fallback. |
+| 3 | **Centralized error handler** | ✅ Done — global error middleware in `server.js`: JSON 404, multer errors → 400, `SERVER_ERROR` fallback. Add per-domain error mappers here. |
 | 4 | **Prisma Accelerate** | Not active. Enable by calling `prisma.$extends(withAccelerate())` in `config/dbConnect.js`. |
 | 5 | **Cloudinary vs S3 routing** | Both configured. Decide per asset type: S3 for docs/exports, Cloudinary for images/media. Encode in a `helpers/storage.js`. |
 | 6 | **Email transport helper** | ✅ Done — `helpers/emailService.js` (SMTP via nodemailer, SES-compatible; dev-mode log). Password-reset OTP flow wired. |
-| 7 | **Structured logging** | `console.log/error` only. Add Pino or Winston in `server.js` if log aggregation (CloudWatch, Datadog) is needed. |
+| 7 | **Structured logging** | ✅ Done — pino logger + per-request IDs in `server.js`. Wire transports (CloudWatch, Datadog) if log aggregation needed. |
 | 8 | **Test framework** | ✅ Done — `node:test` (backend, `npm test`) + Vitest (frontend, `npm test`). CI gates both in `.github/workflows/ci.yml`. |
 | 9 | **Code formatter** | ESLint only. Add Prettier + `eslint-config-prettier` if team formatting standards are needed. |

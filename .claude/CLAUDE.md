@@ -7,7 +7,7 @@ A production-grade SaaS scaffold. Use it to build new SaaS products by adding do
 ## Stack (at a glance)
 
 - **Backend**: Node.js 22, Express 5, Prisma 7 (`@prisma/adapter-pg`), PostgreSQL, Redis 5
-- **Auth**: JWT (24h access + 7d refresh, single-use rotation), bcrypt
+- **Auth**: JWT access (24h) + **opaque** refresh token (`randomBytes(48)`, 7d, stored hashed — never a JWT; deterministic JWTs collided on the unique `tokenHash` and broke rotation), bcrypt
 - **Queue**: Custom Redis BLPOP (not BullMQ) + node-cron
 - **Frontend**: React 19, React Router 7, Vite 7 (SWC), Tailwind CSS 4 (Vite plugin — no config file)
 - **State**: React Context + useState — no Redux, no Zustand, no React Query
@@ -17,8 +17,8 @@ A production-grade SaaS scaffold. Use it to build new SaaS products by adding do
 
 | Rule | Detail |
 |------|--------|
-| No TypeScript | Plain `.js` / `.jsx` only |
-| Tests | `node:test` (backend) + Vitest (frontend) — run `npm test` in each before finishing |
+| No TypeScript | Plain `.js` / `.jsx` only (exception: `frontend/src/components/designs/` templates are TSX) |
+| Tests | `node:test` (backend) + Vitest (frontend) — run `npm test` in each before finishing. Backend integration suite (`tests/auth.integration.test.js`) needs Postgres + Redis; use `fw-test-pg` (:55432) / `fw-test-redis` (:56379) via docker, or it skips |
 | No Prettier | ESLint 9 flat config only (`eslint.config.js`) |
 | No comments explaining what | Only add comments for non-obvious WHY (constraints, workarounds) |
 | No unnecessary abstractions | Three similar lines > premature abstraction |
@@ -29,11 +29,11 @@ A production-grade SaaS scaffold. Use it to build new SaaS products by adding do
 ### API response envelope
 ```js
 // Backend: every response goes through this
-const apiResponse = require('./helpers/apiResponse');
-res.json(apiResponse.response('SUCCESS', { items: [...] }));
+const { send } = require('./helpers/apiResponse');
+send(res, 'SUCCESS', { items: [...] });
 // → { responseCode: 1000, responseMessage: '...', responseData: { result: { items } } }
 ```
-Codes are in `backend/globals/response.json`.
+Codes are in `backend/globals/response.json`. `response(key, data)` builds the object; `send(res, key, data, status)` also sets HTTP status.
 
 ### Auth middleware chain
 ```js
@@ -94,8 +94,9 @@ const { jobId } = await enqueueJob('queue:action', payload, { userId: req.user.i
 - **Tailwind CSS 4** uses the Vite plugin. Don't add `tailwind.config.js` — it breaks things.
 - **React Router 7** — use v7 patterns. Legacy v5 patterns break.
 - **Express 5** — async handlers auto-throw; no `try/catch` + `next(err)` needed for unhandled rejections.
-- **Redis 5** — uses `redis` npm package v5 with `await client.connect()`. Not ioredis. `server.js` awaits `redisReady` before listening (rate limiter / OTP / WS relay depend on it).
-- **PM2 cluster** — rate limits are Redis-backed (`rate-limit-redis`, prefix `rl:`), shared across workers. In-memory fallback if Redis down.
+- **Redis 5** — uses `redis` npm package v5 with `await client.connect()`. Not ioredis. Server boot: `Promise.race` on `redisReady` with 15s timeout — prod exits(1) if Redis unreachable, dev boots degraded (in-memory rate-limit fallback).
+- **PM2 cluster** — rate limits use `HybridStore` (`rate-limit-redis`, per-limiter prefixes `rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:`, shared across workers) with in-memory sliding-window fallback if Redis drops. Re-inits Redis store on reconnect.
+- **Refresh tokens** — opaque `randomBytes(48)`, DB row has `tokenHash` unique + `expiresAt`. Rotate = revoke old row, insert new. `verifyRefreshToken` does NOT exist — validate by lookup + flags.
 - **No sticky sessions needed** — Redis-backed auth and jobs work across all PM2 instances.
 
 ## Files to update when you add features

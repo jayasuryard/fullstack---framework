@@ -18,14 +18,14 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { PrivateRoute } from './components/PrivateRoute'
-
-// ── Page imports — add yours here ────────────────────────────────────────────
-import LoginPage          from './pages/auth/LoginPage'
-import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
-import ResetPasswordPage  from './pages/auth/ResetPasswordPage'
-import DashboardPage      from './pages/dashboard/DashboardPage'
 import { lazy, Suspense } from 'react'
-const DesignGallery = lazy(() => import('./components/designs/Gallery'))
+
+// ── Page imports — add yours here (lazy = code-split per route) ─────────────
+const LoginPage          = lazy(() => import('./pages/auth/LoginPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'))
+const ResetPasswordPage  = lazy(() => import('./pages/auth/ResetPasswordPage'))
+const DashboardPage      = lazy(() => import('./pages/dashboard/DashboardPage'))
+const DesignGallery      = lazy(() => import('./components/designs/Gallery'))
 
 // ── Role-default route helper (implement per product) ─────────────────────────
 // Replace the placeholder text below with real redirects once you have routes.
@@ -42,24 +42,25 @@ function DefaultRedirect() {
 
 function AppRoutes() {
   return (
-    <Routes>
-      {/* ── Public ──────────────────────────────────────────────────────────── */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      {/* <Route path="/public/*" element={<PublicPage />} /> */}
+    <Suspense fallback={<div style={{ padding: 32 }}>Loading…</div>}>
+      <Routes>
+        {/* ── Public ──────────────────────────────────────────────────────────── */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* <Route path="/public/*" element={<PublicPage />} /> */}
 
-      {/* ── Design Gallery — browse all 10 landing page templates ───────────── */}
-      <Route path="/designs" element={
-        <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#0D0D16', minHeight: '100vh' }}>Loading design gallery…</div>}>
-          <DesignGallery />
-        </Suspense>
-      } />
-      <Route path="/designs/:id" element={
-        <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#000', minHeight: '100vh' }}>Loading template…</div>}>
-          <DesignGallery />
-        </Suspense>
-      } />
+        {/* ── Design Gallery — browse all 10 landing page templates ───────────── */}
+        <Route path="/designs" element={
+          <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#0D0D16', minHeight: '100vh' }}>Loading design gallery…</div>}>
+            <DesignGallery />
+          </Suspense>
+        } />
+        <Route path="/designs/:id" element={
+          <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#000', minHeight: '100vh' }}>Loading template…</div>}>
+            <DesignGallery />
+          </Suspense>
+        } />
 
       {/* ── Protected — add role-specific routes inside PrivateRoute ─────────── */}
       <Route
@@ -97,7 +98,8 @@ function AppRoutes() {
       {/* Do NOT redirect * back to / — that creates an infinite loop when /login
           has no route yet. Render a plain 404 instead. */}
       <Route path="*" element={<div style={{ padding: 32 }}>404 — Page not found</div>} />
-    </Routes>
+      </Routes>
+    </Suspense>
   )
 }
 
