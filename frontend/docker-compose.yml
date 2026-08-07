@@ -1,0 +1,11 @@
+version: "3.8"
+
+# Replace APP_NAME with your product name before deploying.
+
+services:
+  frontend:
+    image: APP_NAME-web:latest
+    container_name: APP_NAME-web
+    restart: always
+    ports:
+      - "8080:8080"

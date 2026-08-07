@@ -1,0 +1,58 @@
+{
+    "SUCCESS": {
+        "code": 1000,
+        "message": { "en": "Operation completed successfully." }
+    },
+    "INVALID_REQUEST": {
+        "code": 1001,
+        "message": { "en": "Invalid request parameters." }
+    },
+    "UNAUTHORIZED": {
+        "code": 1002,
+        "message": { "en": "Unauthorized access." }
+    },
+    "FORBIDDEN": {
+        "code": 1003,
+        "message": { "en": "Forbidden action." }
+    },
+    "NOT_FOUND": {
+        "code": 1004,
+        "message": { "en": "Resource not found." }
+    },
+    "SERVER_ERROR": {
+        "code": 1005,
+        "message": { "en": "Internal server error." }
+    },
+    "VALIDATION_ERROR": {
+        "code": 1006,
+        "message": { "en": "Validation failed." }
+    },
+    "CONFLICT": {
+        "code": 1007,
+        "message": { "en": "Conflict detected." }
+    },
+    "TOO_MANY_REQUESTS": {
+        "code": 1008,
+        "message": { "en": "Too many requests. Please try again later." }
+    },
+    "TOKEN_EXPIRED": {
+        "code": 1010,
+        "message": { "en": "Token has expired." }
+    },
+    "RATE_LIMIT_EXCEEDED": {
+        "code": 1011,
+        "message": { "en": "Too many attempts. Please try again later." }
+    },
+    "CREATED": {
+        "code": 1012,
+        "message": { "en": "Resource created successfully." }
+    },
+    "ACCEPTED": {
+        "code": 1013,
+        "message": { "en": "Request accepted." }
+    },
+    "SERVICE_UNAVAILABLE": {
+        "code": 1014,
+        "message": { "en": "Service temporarily unavailable." }
+    }
+}

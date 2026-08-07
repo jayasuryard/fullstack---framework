@@ -1,0 +1,115 @@
+/**
+ * Application root — router + providers.
+ *
+ * How to add routes:
+ *   1. Import your page component.
+ *   2. Add a <Route> inside the matching role block below.
+ *   3. Protect it with <PrivateRoute allowedRoles={[...]}>.
+ *
+ * Route convention (mirrors backend):
+ *   /login               — unauthenticated
+ *   /public/*            — unauthenticated public pages
+ *   /admin/*             — admin role
+ *   /superadmin/*        — superAdmin role
+ *   /<role>/*            — other roles
+ *   /dashboard           — redirects to role default after login
+ */
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import './App.css'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { PrivateRoute } from './components/PrivateRoute'
+import { lazy, Suspense } from 'react'
+
+// ── Page imports — add yours here (lazy = code-split per route) ─────────────
+const LoginPage          = lazy(() => import('./pages/auth/LoginPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'))
+const ResetPasswordPage  = lazy(() => import('./pages/auth/ResetPasswordPage'))
+const DashboardPage      = lazy(() => import('./pages/dashboard/DashboardPage'))
+const DesignGallery      = lazy(() => import('./components/designs/Gallery'))
+
+// ── Role-default route helper (implement per product) ─────────────────────────
+// Replace the placeholder text below with real redirects once you have routes.
+function DefaultRedirect() {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+  // Map roles to their default landing page:
+  const roleRoutes = { admin: '/admin/dashboard', superAdmin: '/superadmin/dashboard' }
+  return <Navigate to={roleRoutes[user.role] || '/dashboard'} replace />
+}
+
+function AppRoutes() {
+  return (
+    <Suspense fallback={<div style={{ padding: 32 }}>Loading…</div>}>
+      <Routes>
+        {/* ── Public ──────────────────────────────────────────────────────────── */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* <Route path="/public/*" element={<PublicPage />} /> */}
+
+        {/* ── Design Gallery — browse all 10 landing page templates ───────────── */}
+        <Route path="/designs" element={
+          <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#0D0D16', minHeight: '100vh' }}>Loading design gallery…</div>}>
+            <DesignGallery />
+          </Suspense>
+        } />
+        <Route path="/designs/:id" element={
+          <Suspense fallback={<div style={{ padding: 32, color: '#fff', background: '#000', minHeight: '100vh' }}>Loading template…</div>}>
+            <DesignGallery />
+          </Suspense>
+        } />
+
+      {/* ── Protected — add role-specific routes inside PrivateRoute ─────────── */}
+      <Route
+        path="/admin/*"
+        element={
+          <PrivateRoute allowedRoles={['admin', 'superAdmin']}>
+            <DashboardPage />
+          </PrivateRoute>
+        }
+      >
+        <Route path="dashboard" element={<DashboardPage />} />
+      </Route>
+      <Route
+        path="/superadmin/*"
+        element={
+          <PrivateRoute allowedRoles={['superAdmin']}>
+            <DashboardPage />
+          </PrivateRoute>
+        }
+      >
+        <Route path="dashboard" element={<DashboardPage />} />
+      </Route>
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute allowedRoles={['admin', 'superAdmin']}>
+            <DashboardPage />
+          </PrivateRoute>
+        }
+      />
+
+      {/* ── Fallback ─────────────────────────────────────────────────────────── */}
+      <Route path="/unauthorized" element={<div style={{ padding: 32 }}>403 — You don't have access to this page.</div>} />
+      <Route path="/" element={<DefaultRedirect />} />
+      {/* Do NOT redirect * back to / — that creates an infinite loop when /login
+          has no route yet. Render a plain 404 instead. */}
+      <Route path="*" element={<div style={{ padding: 32 }}>404 — Page not found</div>} />
+      </Routes>
+    </Suspense>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        {/* Add other Context providers here (e.g. ThemeProvider, TenantProvider) */}
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  )
+}

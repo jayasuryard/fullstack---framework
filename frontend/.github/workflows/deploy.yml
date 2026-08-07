@@ -1,0 +1,122 @@
+# Deploy Frontend — DEV environment
+# Triggered on push to deployment-dev branch.
+# Writes .env from GitHub secret, builds Docker image, pushes to ECR, deploys to EC2.
+#
+# Before using: replace APP_NAME with your product name.
+# Required secrets: AWS_ACCESS_KEY, AWS_SECRET_KEY, VPS_HOST, VPS_SSH_KEY, ENVFILES
+
+name: Deploy Frontend DEV
+
+on:
+  push:
+    branches:
+      - deployment-dev
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: APP_NAME-web   # ← replace APP_NAME
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # .env is written from secret so Vite bakes env vars into the build
+      - name: Create .env file
+        run: |
+          echo "${{ secrets.ENVFILES }}" > .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t $ECR_REPOSITORY .
+
+      - name: Tag image
+        run: |
+          docker tag $ECR_REPOSITORY:latest \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:dev
+
+      - name: Push image
+        run: |
+          docker push \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:dev
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ubuntu
+          key: ${{ secrets.VPS_SSH_KEY }}
+
+          script: |
+            set -e
+
+            IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:dev
+            APP=APP_NAME-web   # ← replace APP_NAME
+
+            echo "Login to ECR"
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+            | docker login --username AWS \
+            --password-stdin ${{ steps.login-ecr.outputs.registry }}
+
+            echo "Pull latest image"
+            docker pull $IMAGE
+
+            echo "Start staged container on temp port 4000"
+            docker rm -f ${APP}-new || true
+            docker run -d \
+              --name ${APP}-new \
+              --restart always \
+              -p 4000:80 \
+              $IMAGE
+
+            echo "Waiting for app startup..."
+            sleep 10
+
+            SUCCESS=0
+            for i in $(seq 1 24); do
+              if curl --retry 3 --retry-delay 2 -fs http://localhost:4000/health; then
+                SUCCESS=$((SUCCESS+1))
+              else
+                SUCCESS=0
+              fi
+              if [ "$SUCCESS" -ge 3 ]; then
+                echo "Staged container is stable."
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$SUCCESS" -ge 3 ]; then
+              echo "Switching traffic..."
+              docker stop ${APP} || true
+              docker rm   ${APP} || true
+
+              docker run -d \
+                --name ${APP} \
+                --restart always \
+                -p 8080:80 \
+                $IMAGE
+
+              docker rm -f ${APP}-new || true
+              echo "✅ Frontend deployed successfully"
+            else
+              echo "❌ Health check failed. Rolling back..."
+              docker logs ${APP}-new || true
+              docker rm -f ${APP}-new || true
+              echo "Old container kept alive."
+              exit 1
+            fi

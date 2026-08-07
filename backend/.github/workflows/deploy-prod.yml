@@ -1,0 +1,152 @@
+# Deploy API — PRODUCTION environment
+# Triggered on push of a v* tag (e.g. v1.2.3).
+# Same blue-green pattern as DEV, with Production environment gate for secret access.
+#
+# Before using: replace APP_NAME with your product name.
+# Required secrets (under Production environment): AWS_ACCESS_KEY_PROD,
+#   AWS_SECRET_ACCESS_KEY_PROD, PROD_VPS_HOST, PROD_VPS_SSH_KEY
+
+name: Deploy API PROD
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: APP_NAME-api-prod   # ← replace APP_NAME
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: Production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker Image
+        run: |
+          docker build -t $ECR_REPOSITORY .
+
+      - name: Tag Docker Image
+        run: |
+          docker tag $ECR_REPOSITORY:latest \
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: Push Docker Image
+        run: |
+          docker push \
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        with:
+          host: ${{ secrets.PROD_VPS_HOST }}
+          username: ubuntu
+          key: ${{ secrets.PROD_VPS_SSH_KEY }}
+          envs: ECR_REPOSITORY,REGISTRY
+          script: |
+            set -e
+
+            ECR_IMAGE=$REGISTRY/$ECR_REPOSITORY:latest
+            APP=APP_NAME-api-prod      # ← replace APP_NAME
+            ENV_FILE=/home/ubuntu/apps/env/APP_NAME-prod.env   # ← replace APP_NAME
+
+            echo "Logging into ECR..."
+            aws ecr get-login-password --region ap-south-1 \
+              | docker login \
+                  --username AWS \
+                  --password-stdin \
+                  $REGISTRY
+
+            echo "Pulling latest image..."
+            docker pull $ECR_IMAGE
+
+            echo "Creating backup..."
+            docker commit ${APP} ${ECR_REPOSITORY}:backup || true
+
+            echo "Starting staged container on temp port 4000..."
+            docker rm -f ${APP}-new || true
+
+            docker run -d \
+              --name ${APP}-new \
+              --restart always \
+              -p 4000:3000 \
+              --add-host=host.docker.internal:host-gateway \
+              --env-file $ENV_FILE \
+              $ECR_IMAGE
+
+            echo "Waiting for application startup..."
+            sleep 30
+
+            SUCCESS=0
+
+            for i in $(seq 1 36); do
+              echo "Health Check Attempt: $i"
+
+              if curl --retry 3 --retry-delay 2 -fs http://localhost:4000/health/deep; then
+                SUCCESS=$((SUCCESS+1))
+              else
+                SUCCESS=0
+              fi
+
+              echo "Consecutive Success Streak: $SUCCESS"
+
+              if [ "$SUCCESS" -ge 3 ]; then
+                echo "Application is stable."
+                break
+              fi
+
+              sleep 5
+            done
+
+            if [ "$SUCCESS" -ge 3 ]; then
+
+              echo "Stopping current production..."
+              docker stop ${APP} || true
+              docker rm -f ${APP} || true
+
+              echo "Starting production container..."
+              docker run -d \
+                --name ${APP} \
+                --restart always \
+                -p 3000:3000 \
+                --add-host=host.docker.internal:host-gateway \
+                --env-file $ENV_FILE \
+                $ECR_IMAGE
+
+              echo "Removing staged container..."
+              docker rm -f ${APP}-new || true
+
+              # Add seed/post-deploy scripts here, e.g.:
+              # docker exec ${APP} node seed/seedConfig.js || true
+
+              echo "✅ Production deployment completed successfully."
+
+            else
+
+              echo "❌ Health check failed."
+              docker logs ${APP}-new || true
+              docker rm -f ${APP}-new || true
+              echo "Keeping existing production container."
+              exit 1
+
+            fi
