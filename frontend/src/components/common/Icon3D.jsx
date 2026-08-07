@@ -8,6 +8,8 @@ import {
   Gear, Student, Trash, Bank, Umbrella, Scroll, MapPin, Receipt, WarningCircle
 } from '@phosphor-icons/react';
 
+const MotionDiv = motion.div;
+
 // Maps the emojis you used across the app to high-quality Phosphor icons & intrinsic colors
 const ICON_DICTIONARY = {
   '⚡': { Icon: Lightning, color: '#EAB308' }, // Yellow
@@ -81,7 +83,7 @@ export function Icon3D({ emoji, size = 24, className = '', style = {}, colorOver
   const finalColor = colorOverride || mappedIcon.color;
 
   return (
-    <motion.div
+    <MotionDiv
       // Subtle float/hover effect mimicking 3D interaction
       whileHover={{ scale: 1.1, rotate: [-2, 2, -2, 0] }}
       whileTap={{ scale: 0.9 }}
@@ -101,7 +103,7 @@ export function Icon3D({ emoji, size = 24, className = '', style = {}, colorOver
         size={size} 
         weight="duotone" // Duotone gives the 3D layered/transparent effect automatically
       />
-    </motion.div>
+    </MotionDiv>
   );
 }
 

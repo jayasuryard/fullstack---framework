@@ -541,7 +541,7 @@ function CTA() {
 function Footer() {
   const cols = {
     Product: ['Dashboards', 'Connectors', 'Alerts', 'Reports', 'API'],
-    Use Cases: ['Finance', 'Marketing', 'Sales', 'Product', 'Operations'],
+    'Use Cases': ['Finance', 'Marketing', 'Sales', 'Product', 'Operations'],
     Company: ['About', 'Blog', 'Careers', 'Press', 'Contact'],
     Legal: ['Privacy', 'Terms', 'Security', 'Cookies'],
   }

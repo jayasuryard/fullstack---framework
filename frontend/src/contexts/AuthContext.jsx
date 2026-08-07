@@ -53,11 +53,18 @@ export const AuthProvider = ({ children }) => {
     setUser(null)
   }
 
+  const updateProfile = async (formData) => {
+    const profile = await api.common.updateProfile(formData)
+    setUser(prev => ({ ...prev, ...profile }))
+    return profile
+  }
+
   const value = {
     user,
     loading,
     login,
     logout,
+    updateProfile,
     isAuthenticated: !!user,
     hasRole:         (...roles) => roles.includes(user?.role),
     isReadOnly:      () => user?.accessLevel === 'read_only',

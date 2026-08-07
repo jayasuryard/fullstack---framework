@@ -58,8 +58,10 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `backend/helpers/paginate.js` | ✅ | `page`/`limit`/`skip`/meta from `req.query` | No changes needed |
 | `backend/helpers/auditLogger.js` | ✅ | Writes one row to `AuditLog` table | No changes needed; pass extra fields via `extra` param |
 | `backend/helpers/generateToken.js` | ✅ | JWT access + refresh helpers, verify functions | Pass product-specific claims via `extraClaims` to `generateToken()` |
-| `backend/helpers/queue/jobQueue.js` | ✅ | Redis BLPOP queue: enqueue, status poll, progress reporting | No changes needed |
-| `backend/helpers/queue/jobWsServer.js` | 🔌 | WebSocket bridge: Redis pub/sub → browser for live job progress | Call `attachJobWsServer(server)` in `server.js`; customize ownership check if needed |
+| `backend/helpers/queue/jobQueue.js` | ✅ | Redis BLPOP queue: enqueue, status poll, progress reporting, 3 retries, `recoverStuckJobs()` on worker start | Progress events go through the WS hub (`emitToChannel('job:<id>')`) |
+| `backend/helpers/queue/jobWsServer.js` | ✅ | `/ws/jobs/:jobId` — thin job-specific shim over the shared hub | Ownership enforced: WS refused unless `job.meta.userId` matches token; snapshot sent as first event |
+| `backend/helpers/ws/hub.js` | ✅ | Reusable WS emitter/receiver: `attachWsHub(server)` (generic `/ws`), `emitToChannel(channel, payload)` (Redis pub/sub relay, cluster-safe), per-channel `authorizeChannel`/`snapshotFor` hooks | Add product channels; customize auth via options |
+| `backend/helpers/emailService.js` | ✅ | SMTP transport via nodemailer; dev mode prints to log when `SMTP_HOST` unset | Configure `SMTP_*` env vars for real delivery |
 
 ### Middleware
 
@@ -68,7 +70,7 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `backend/middleware/verifyToken.js` | ✅ | Bearer JWT → populates `req.user` | Add per-request grant validation after tokenVersion check if needed |
 | `backend/middleware/role.js` | ✅ | RBAC guard: `role('admin', 'superAdmin')` | No changes needed |
 | `backend/middleware/accessLevel.js` | ✅ | Blocks `read_only` users on mutating routes | Pass `readOnlyRoles` array to block additional role names |
-| `backend/middleware/rateLimit.js` | ✅ | `loginLimiter`, `otpSendLimiter`, `generalLimiter` + `createLimiter()` factory | Uses in-memory store — swap for `rate-limit-redis` in PM2 cluster for shared limits |
+| `backend/middleware/rateLimit.js` | ✅ | `loginLimiter`, `otpSendLimiter`, `generalLimiter` + `createLimiter()` factory | Redis-backed store (`rate-limit-redis`, prefix `rl:`) — shared across PM2 cluster. Redis outage → limited routes error until client reconnects (no in-memory fallback); startup race avoided by awaiting `redisReady` before listen |
 | `backend/middleware/upload.js` | ✅ | multer memoryStorage, 5 MB limit | No changes needed |
 
 ### Auth Module
@@ -76,11 +78,9 @@ Every file in this repo, what it does, and what you need to customize per produc
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
 | `backend/modules/auth/routes/authRoutes.js` | 🔌 | login, refresh, me, logout, profile, forgot/reset-password | Add product-specific routes (SSO, magic link, MFA) |
-| `backend/modules/auth/services/AuthService.js` | 🔌 | Full auth logic: lockout, token rotation, /me, profile, password reset stubs | Extend `buildUserPayload()`; wire the OTP email stub in `forgotPassword` + `resetPassword` |
+| `backend/modules/auth/services/AuthService.js` | ✅ | Full auth logic: lockout, token rotation, /me, profile, forgot/reset-password via Redis OTP | Extend `buildUserPayload()` for product-specific user fields |
 
-**Auth TODOs** (stubs in AuthService.js that need wiring before going live):
-- `forgotPassword` — generate OTP, store hashed OTP in DB, send via your email service
-- `resetPassword` — validate OTP against DB, check expiry, hash new password, increment `tokenVersion`
+**Auth flow — done:** `forgotPassword` generates a 6-digit OTP, stores its hash in Redis (`auth:reset:otp:<email>`, 10-min TTL), emails via `emailService` (send failure logged, never surfaced). `resetPassword` caps attempts per email (5), validates hash, updates password, bumps `tokenVersion`, revokes ALL refresh tokens (kills pre-reset sessions end-to-end).
 
 ### Routes & Scripts
 
@@ -147,7 +147,9 @@ Every file in this repo, what it does, and what you need to customize per produc
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `frontend/src/server/api.js` | 🔌 | Single API gateway, auth headers, 401 recovery, response unwrapping | Add product domain namespaces to the `api` object |
+| `frontend/src/server/api.js` | 🔌 | Single API gateway, auth headers, refresh-once recovery (HTTP 401 + envelope 1010), response unwrapping | Add product domain namespaces to the `api` object |
+| `frontend/src/server/ws.js` | ✅ | Single WS client (`wsClient`) over the shared hub: auto-connect, backoff reconnect, channel subscribe/unsubscribe, typed events | No changes needed; add product channels via `subscribeChannel` |
+| `frontend/src/hooks/useWebSocket.js` | ✅ | Realtime React hook: `useWebSocket(channel, handler, { enabled })` | No changes needed |
 | `frontend/src/hooks/useDataFetch.js` | ✅ | Generic data-fetch hook with loading/error state | No changes needed |
 | `frontend/src/utils/subdomain.js` | ✅ | Subdomain detection from hostname (multi-tenant support) | No changes needed |
 
@@ -175,12 +177,12 @@ These are architectural choices the framework intentionally leaves to the produc
 
 | # | Decision | Recommendation |
 |---|----------|---------------|
-| 1 | **Rate limit store in PM2 cluster** | In-memory by default (limit is per worker). Add `rate-limit-redis` for shared limits across all API instances. |
+| 1 | **Rate limit store in PM2 cluster** | ✅ Done — Redis-backed via `rate-limit-redis` (prefix `rl:`), in-memory fallback if Redis down. |
 | 2 | **Input validation library** | Currently manual inline checks in services. Add Zod at route level for schema validation if desired. |
 | 3 | **Centralized error handler** | Currently per-handler catch blocks. Add `app.use((err, req, res, next) => ...)` in `server.js` for a global fallback. |
 | 4 | **Prisma Accelerate** | Not active. Enable by calling `prisma.$extends(withAccelerate())` in `config/dbConnect.js`. |
 | 5 | **Cloudinary vs S3 routing** | Both configured. Decide per asset type: S3 for docs/exports, Cloudinary for images/media. Encode in a `helpers/storage.js`. |
-| 6 | **Email transport helper** | Not included. Add `helpers/emailService.js` wrapping AWS SES `SendEmailCommand` — required to complete the `forgotPassword` TODO in AuthService. |
+| 6 | **Email transport helper** | ✅ Done — `helpers/emailService.js` (SMTP via nodemailer, SES-compatible; dev-mode log). Password-reset OTP flow wired. |
 | 7 | **Structured logging** | `console.log/error` only. Add Pino or Winston in `server.js` if log aggregation (CloudWatch, Datadog) is needed. |
-| 8 | **Test framework** | None. Add Vitest (frontend) + Jest/Supertest (backend) when test coverage is required. |
+| 8 | **Test framework** | ✅ Done — `node:test` (backend, `npm test`) + Vitest (frontend, `npm test`). CI gates both in `.github/workflows/ci.yml`. |
 | 9 | **Code formatter** | ESLint only. Add Prettier + `eslint-config-prettier` if team formatting standards are needed. |

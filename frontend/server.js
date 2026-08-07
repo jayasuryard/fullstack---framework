@@ -99,8 +99,22 @@ function injectMeta(template, branding, requestUrl) {
 }
 
 // ── Express setup ─────────────────────────────────────────────────────────────
+// Cache strategy: hashed build assets (/assets/*) are content-addressed →
+// immutable 1y. The SPA shell (index.html) must revalidate every load — a cached
+// old shell references hashed files the new deploy already pruned (stale-404).
 
-app.use(express.static(DIST_DIR, { index: false }));
+app.use(express.static(DIST_DIR, {
+  index:   false,
+  maxAge:  "1y",
+  immutable: true,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith("index.html")) {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  },
+}));
+
+app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 app.get("/{*splat}", async (req, res) => {
   const subdomain  = extractSubdomain(req.hostname);
@@ -109,8 +123,9 @@ app.get("/{*splat}", async (req, res) => {
   const requestUrl = `${requestHost}${req.originalUrl}`;
 
   res.set("Content-Type", "text/html");
+  res.set("Cache-Control", "no-cache"); // SPA shell — revalidate, never stale
   res.send(injectMeta(indexTemplate, branding, requestUrl));
 });
 
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 8080; // 8080 (not 80) so the container can run as non-root
 app.listen(PORT, () => console.log(`[server] Listening on :${PORT}`));

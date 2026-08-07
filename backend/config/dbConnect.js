@@ -12,6 +12,4 @@ const adapter = new PrismaPg(pool);
 
 const prisma = new PrismaClient({ adapter });
 
-console.log('Database connected successfully');
-
 module.exports = prisma;

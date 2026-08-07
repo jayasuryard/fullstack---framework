@@ -2,7 +2,7 @@
  * Mobile layout shell (bottom nav + outlet).
  * Define YOUR_MOBILE_NAV_ITEMS below (keep to 4–5 items max).
  */
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 // Define your product's mobile nav items here (keep to 4-5 max).
@@ -12,8 +12,7 @@ const MOBILE_NAV_ITEMS = [
 ]
 
 export const MobileLayout = () => {
-  const { user, logout } = useAuth()
-  const navigate         = useNavigate()
+  const { user } = useAuth()
 
   const visibleItems = MOBILE_NAV_ITEMS.filter(
     item => !item.roles || item.roles.includes(user?.role)

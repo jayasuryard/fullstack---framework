@@ -169,7 +169,7 @@ export const Toast = ({ message, type = 'success', duration = 4000, onClose }) =
       clearTimeout(hideTimer);
       clearTimeout(closeTimer);
     };
-  }, [duration]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [duration]);
 
   const config = {
     success: {

@@ -92,7 +92,7 @@ jobs:
             for i in $(seq 1 36); do
               echo "Health check attempt: $i"
 
-              if curl --retry 3 --retry-delay 2 -fs http://localhost:4000/health; then
+              if curl --retry 3 --retry-delay 2 -fs http://localhost:4000/health/deep; then
                 SUCCESS=$((SUCCESS+1))
               else
                 SUCCESS=0

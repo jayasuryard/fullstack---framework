@@ -301,7 +301,6 @@ function Hero() {
                     transition={{ delay: 0.5 + i * 0.05, duration: 0.4 }}
                     style={{ originY: 1 }}
                     className="flex-1 rounded-sm"
-                    style2={{ height: `${h}%`, background: i === 11 ? T.primary : T.primaryDim }}
                   >
                     <div className="w-full h-full rounded-sm"
                       style={{ height: `${h}%`, background: i === 11 ? T.primary : T.primaryDim }} />
@@ -535,8 +534,7 @@ function Pricing() {
           {plans.map(p => (
             <motion.div key={p.name} variants={fadeUp}>
               <GlassCard className={`p-7 h-full flex flex-col relative ${p.primary ? 'ring-1' : ''}`}
-                hover={false}
-                style2={{ ringColor: T.primary }}>
+                hover={false}>
                 {p.primary && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <span className="px-3 py-1 rounded-full text-xs font-medium"

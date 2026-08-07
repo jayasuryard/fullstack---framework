@@ -3,7 +3,9 @@
  *
  * Provides:
  *  - fetch wrapper with auth headers, JSON/FormData, path params, query strings
- *  - Automatic token refresh on 401 (singleton refreshPromise — no duplicate calls)
+ *  - Automatic token refresh on HTTP 401 OR envelope code 1010 (TOKEN_EXPIRED) —
+ *    backend replies 200 + responseCode for auth failures, so both paths are handled.
+ *    Singleton refreshPromise — no duplicate refresh calls.
  *  - ApiError class with responseCode, url, payload
  *  - Response unwrapping (responseCode 1000/1012 = success; anything else throws)
  *  - localStorage session helpers: setAuthSession, clearAuthSession, getStoredToken, etc.
@@ -128,6 +130,17 @@ async function parseResponseBody(response) {
   return text || null
 }
 
+// Backend now sends real HTTP statuses with the envelope. Pull the human
+// message out of the body so callers don't just see "HTTP 403".
+async function errorMessageFrom(response, fallback) {
+  try {
+    const body = await parseResponseBody(response)
+    return body?.responseMessage || body?.responseData?.result?.message || fallback
+  } catch {
+    return fallback
+  }
+}
+
 export function unwrapApiResult(body, fallbackMessage = 'Request failed') {
   if (!body) throw new ApiError(fallbackMessage, 0, '', body)
   const SUCCESS_CODES = new Set([1000, 1012])
@@ -165,7 +178,8 @@ async function attemptRefresh() {
   }
 }
 
-async function request(method, path, pathParams = {}, query = {}, body = null) {
+async function request(method, path, pathParams = {}, query = {}, body = null, opts = {}) {
+  const { skipAuthRecovery = false } = opts
   const resolvedPath = resolvePath(normalizePath(path), pathParams)
   const url          = `${API_BASE_URL}/api/v1${withQuery(resolvedPath, query)}`
 
@@ -196,18 +210,42 @@ async function request(method, path, pathParams = {}, query = {}, body = null) {
 
   let response = await doFetch()
 
-  if (response.status === 401) {
+  // ── Auth recovery: refresh ONCE per request, never in a loop ─────────────────
+  // Covers both HTTP 401 and the backend's envelope-level 1010 (it replies 200 +
+  // responseCode for auth failures). If the retried request still fails auth,
+  // fall through and surface the error — no unbounded refresh/retry spin.
+  let authRecovered = false
+  const recover = async () => {
+    if (authRecovered) return
+    authRecovered = true
     if (!refreshPromise) refreshPromise = attemptRefresh().finally(() => { refreshPromise = null })
     const refreshed = await refreshPromise
-    if (refreshed) response = await doFetch()
-    else { clearAuthSession(); throw new ApiError('Session expired', 401, url, null) }
+    if (!refreshed) {
+      clearAuthSession()
+      throw new ApiError('Session expired', response.status, url, null)
+    }
+    response = await doFetch()
+    if (!response.ok) {
+      throw new ApiError(await errorMessageFrom(response, `HTTP ${response.status}`), response.status, url, null)
+    }
+  }
+
+  if (response.status === 401 && !skipAuthRecovery) {
+    await recover()
+    return unwrapApiResult(await parseResponseBody(response))
   }
 
   if (!response.ok) {
-    throw new ApiError(`HTTP ${response.status}`, response.status, url, null)
+    throw new ApiError(await errorMessageFrom(response, `HTTP ${response.status}`), response.status, url, null)
   }
 
-  const responseBody = await parseResponseBody(response)
+  let responseBody = await parseResponseBody(response)
+
+  if (!skipAuthRecovery && !authRecovered && responseBody?.responseCode === 1010 && getStoredToken()) {
+    await recover()
+    responseBody = await parseResponseBody(response)
+  }
+
   return unwrapApiResult(responseBody)
 }
 
@@ -216,7 +254,7 @@ async function request(method, path, pathParams = {}, query = {}, body = null) {
 const api = {
   common: {
     login:   (body)  => request('POST', '/common/auth/login',   {}, {}, body),
-    refresh: (body)  => request('POST', '/common/auth/refresh', {}, {}, body),
+    refresh: (body)  => request('POST', '/common/auth/refresh', {}, {}, body, { skipAuthRecovery: true }),
     logout:  ()      => request('POST', '/common/auth/logout'),
     me:      ()      => request('GET',  '/common/auth/me'),
     updateProfile: (body) => request('POST', '/common/auth/profile/update', {}, {}, body),

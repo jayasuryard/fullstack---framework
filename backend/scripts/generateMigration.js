@@ -17,7 +17,11 @@ const command = `npx prisma migrate dev --name ${migrationName}`;
 console.log(`⏳ Running: ${command}\n`);
 
 exec(command, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
-  if (error) { console.error('❌ Migration failed:', error.message); return; }
+  if (error) {
+    console.error('❌ Migration failed:', error.message);
+    if (stderr) console.error(stderr);
+    process.exit(1); // npm must report failure so CI/agents see the broken schema
+  }
   if (stderr) console.error('⚠️  Warnings:', stderr);
   console.log(stdout);
   console.log(`✅ Migration '${migrationName}' completed successfully!`);

@@ -3,7 +3,7 @@
  * To use: wrap role-specific routes with <MainLayout /> and define YOUR_NAV_ITEMS below.
  */
 import { useState } from 'react'
-import { Outlet, useNavigate, useLocation, NavLink } from 'react-router-dom'
+import { Outlet, useNavigate, NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 // Define your product's navigation items here.
@@ -15,7 +15,6 @@ const NAV_ITEMS = [
 export const MainLayout = () => {
   const { user, logout } = useAuth()
   const navigate         = useNavigate()
-  const location         = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const visibleItems = NAV_ITEMS.filter(

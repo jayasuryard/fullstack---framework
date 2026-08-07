@@ -52,9 +52,12 @@ A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstra
 │   │   ├── paginate.js      # page/limit/skip/meta helper
 │   │   ├── auditLogger.js   # auditLog.create wrapper
 │   │   ├── generateToken.js # JWT access + refresh token helpers
+│   │   ├── emailService.js  # SMTP transport (dev mode logs when SMTP_HOST unset)
+│   │   ├── ws/
+│   │   │   └── hub.js       # Reusable WS emitter/receiver: attachWsHub + emitToChannel
 │   │   └── queue/
 │   │       ├── jobQueue.js     # Redis BLPOP queue (enqueue, status, progress)
-│   │       └── jobWsServer.js  # WebSocket bridge: Redis pub/sub → browser
+│   │       └── jobWsServer.js  # /ws/jobs/:jobId shim over ws/hub.js
 │   │
 │   ├── middleware/
 │   │   ├── verifyToken.js   # Bearer JWT auth → req.user
@@ -127,10 +130,10 @@ A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstra
 | Cache / Queue | Redis 5 |
 | Auth | JWT (24h access + 7d refresh rotation), bcrypt |
 | File upload | multer → AWS S3 or Cloudinary |
-| Email | AWS SES |
+| Email | SMTP via nodemailer (`SMTP_*` env — AWS SES-compatible) |
 | SMS / WhatsApp | Twilio |
 | Payments | Razorpay (unwire if not needed) |
-| Background jobs | Custom Redis BLPOP queue + node-cron |
+| Background jobs | Custom Redis BLPOP queue (3 retries + stuck-job recovery) + node-cron |
 | Process manager | PM2 (cluster API + fork worker) |
 | Real-time | WebSocket (`ws`) bridging Redis pub/sub |
 | Frontend | React 19, React Router 7, Vite 7 (SWC) |
@@ -139,7 +142,7 @@ A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstra
 | HTTP client | Native `fetch` (no axios on frontend) |
 | Icons | Phosphor Icons + react-icons |
 
-**No TypeScript. No test framework. No Prettier.** ESLint 9 flat config only.
+**No TypeScript (exception: `src/components/designs/` templates are TSX). No Prettier.** ESLint 9 flat config only. Tests: `node:test` (backend) + Vitest (frontend) — run via `npm test`.
 
 ---
 
@@ -202,6 +205,13 @@ router.post('/resource', verifyToken, role('admin'), requireReadWrite(), handler
 **Force-logout all sessions:** increment `tokenVersion` on the User row.
 **Lockout:** 5 consecutive failures → `lockedUntil` set 15 min ahead.
 
+> **Refresh tokens are OPAQUE `randomBytes(48)` values, NOT JWTs** (a deterministic
+> JWT collided on the unique `tokenHash` on every 2nd login and broke rotation).
+> Validation = DB lookup by `tokenHash` + `revoked`/`expiredAt` checks; expiry lives
+> in the DB row. Rate limits are Redis-backed with per-limiter prefixes
+> (`rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:`) and degrade to in-memory
+> sliding windows if Redis drops; prod refuses to boot when Redis is unreachable.
+
 ---
 
 ## Background Jobs
@@ -223,8 +233,19 @@ async function handleInvoiceSendPdf(payload, { jobId, reportProgress }) {
 handlers['invoice:send-pdf'] = handleInvoiceSendPdf;
 ```
 
-Stream progress to browser: attach `attachJobWsServer(server)` in `server.js`.
-Client connects to `ws://.../ws/jobs/:jobId?token=<jwt>`.
+Stream progress to browser: the shared WS hub relays `emitToChannel('job:<jobId>', …)` (Redis pub/sub → every API instance → subscribed sockets). Server wires it in `server.js` (`attachWsHub` + `attachJobWsServer`); client uses `frontend/src/server/ws.js`.
+
+```js
+// Any service (API or worker) — push to a channel:
+const { emitToChannel } = require('./helpers/ws/hub');
+await emitToChannel('user:' + userId, { event: 'plan-changed' });
+
+// Browser:
+import { wsClient } from '../server/ws';
+wsClient.onChannel('user:' + userId, (payload) => ...);  // auto-connects
+```
+
+**Reliability:** handlers get 3 attempts (re-queued with backoff-free retry on failure). Jobs stuck in `processing` (crashed worker) are re-queued automatically on next worker start. Always pass `{ userId: req.user.id }` in the meta arg — the WS hub refuses job channels without a matching owner.
 
 ---
 
@@ -233,6 +254,8 @@ Client connects to `ws://.../ws/jobs/:jobId?token=<jwt>`.
 | Pattern | Where |
 |---------|-------|
 | All API calls | `src/server/api.js` — never call `fetch()` directly in pages |
+| Realtime events | `src/server/ws.js` (`wsClient`) — never `new WebSocket()` in pages |
+| Realtime in React | `useWebSocket(channel, handler)` from `src/hooks/useWebSocket.js` |
 | Auth state | `useAuth()` from `AuthContext` |
 | Protected pages | `<PrivateRoute allowedRoles={['admin']}>` |
 | Data fetching | `useDataFetch(() => api.feature.list(query), [deps])` |
@@ -265,12 +288,17 @@ Client connects to `ws://.../ws/jobs/:jobId?token=<jwt>`.
 | Token generation | `backend/helpers/generateToken.js` |
 | Rate limiters | `backend/middleware/rateLimit.js` |
 | Auth flow | `backend/modules/auth/services/AuthService.js` |
+| Password reset (OTP) | `backend/modules/auth/services/AuthService.js` + `backend/helpers/emailService.js` |
+| Email | `backend/helpers/emailService.js` (SMTP; dev mode logs when `SMTP_HOST` unset) |
 | Route registration | `backend/routes/index.js` |
 | Prisma schema | `backend/prisma/schema.prisma` |
 | Job queue | `backend/helpers/queue/jobQueue.js` |
-| WS progress bridge | `backend/helpers/queue/jobWsServer.js` |
+| WS hub (emit/subscribe) | `backend/helpers/ws/hub.js` — `attachWsHub(server)` + `emitToChannel(channel, payload)` |
+| WS client | `frontend/src/server/ws.js` (`wsClient`) + `frontend/src/hooks/useWebSocket.js` |
+| Tests | backend `node --test tests/` · frontend `vitest` · CI `.github/workflows/ci.yml` |
 | Frontend API client | `frontend/src/server/api.js` |
 | Auth context | `frontend/src/contexts/AuthContext.jsx` |
 | Common UI | `frontend/src/components/common/index.js` |
+| Design templates | `frontend/src/components/designs/` (10 landing-page templates, TSX) |
 | File statuses + open decisions | `SOURCE-MAPPING.md` |
 | Stack deep-dive | `ARCHITECTURE.md` |

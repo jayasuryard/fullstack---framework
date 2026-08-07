@@ -18,10 +18,10 @@ import { Button, Loading, Table } from '../components/common'
 import api from '../server/api'
 
 export function FeaturePage() {
-  const { toast, ToastContainer } = useToast()
+  const { ToastContainer } = useToast()
   const [page, setPage] = useState(1)
 
-  const { data, loading, error, refetch } = useDataFetch(
+  const { data, loading, error } = useDataFetch(
     () => api.admin.feature.list({ page, limit: 20 }),
     [page]
   )

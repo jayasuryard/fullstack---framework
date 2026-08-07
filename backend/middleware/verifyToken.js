@@ -20,7 +20,7 @@ const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.json(apiResponse.response('UNAUTHORIZED'));
+      return apiResponse.send(res, 'UNAUTHORIZED');
     }
 
     const token = authHeader.substring(7);
@@ -30,21 +30,21 @@ const verifyToken = async (req, res, next) => {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        return res.json(apiResponse.response('TOKEN_EXPIRED'));
+        return apiResponse.send(res, 'TOKEN_EXPIRED');
       }
-      return res.json(apiResponse.response('UNAUTHORIZED'));
+      return apiResponse.send(res, 'UNAUTHORIZED');
     }
 
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
 
     if (!user || user.isDeleted || !user.active) {
-      return res.json(apiResponse.response('UNAUTHORIZED'));
+      return apiResponse.send(res, 'UNAUTHORIZED');
     }
 
     if (decoded.tokenVersion !== user.tokenVersion) {
-      return res.json(apiResponse.response('UNAUTHORIZED', {
+      return apiResponse.send(res, 'UNAUTHORIZED', {
         message: 'Token has been invalidated. Please log in again.',
-      }));
+      });
     }
 
     req.user = {
@@ -60,7 +60,7 @@ const verifyToken = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('[verifyToken]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 };
 

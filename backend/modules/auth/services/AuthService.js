@@ -9,18 +9,29 @@
  * To add product-level checks in login (e.g. tenant status, plan limits), extend login().
  */
 const prisma      = require('../../../config/dbConnect');
+const { client }  = require('../../../config/redisConfig');
 const apiResponse = require('../../../helpers/apiResponse');
-const { generateToken, generateRefreshToken, verifyRefreshToken } = require('../../../helpers/generateToken');
+const { generateToken, generateRefreshToken } = require('../../../helpers/generateToken');
 const { auditLogger } = require('../../../helpers/auditLogger');
+const { sendPasswordResetOtp } = require('../../../helpers/emailService');
 const bcrypt      = require('bcrypt');
 const crypto      = require('crypto');
+const otpGenerator = require('otp-generator');
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MINS  = 15;
 const REFRESH_TTL_DAYS    = 7;
+const RESET_OTP_TTL_MINS  = 10;
+const MAX_OTP_ATTEMPTS    = 5;
+const RESET_OTP_KEY       = (email) => `auth:reset:otp:${email.toLowerCase()}`;
+const RESET_ATTEMPTS_KEY  = (email) => `auth:reset:attempts:${email.toLowerCase()}`;
 
 const hashToken = (token) =>
   crypto.createHash('sha256').update(token).digest('hex');
+
+// Burn a real bcrypt compare when the user doesn't exist so response timing does
+// not leak whether an account exists (unknown-user vs wrong-password must be ~equal).
+const DUMMY_HASH = bcrypt.hashSync('framework-dummy-password', 12);
 
 // ── Payload builder — extend this in your product ─────────────────────────────
 function buildUserPayload(user) {
@@ -53,9 +64,9 @@ async function login(req, res) {
     const { userName, password } = req.body;
 
     if (!userName || !password) {
-      return res.json(apiResponse.response('VALIDATION_ERROR', {
+      return apiResponse.send(res, 'VALIDATION_ERROR', {
         message: 'Both username and password are required.',
-      }));
+      });
     }
 
     const user = await prisma.user.findFirst({
@@ -63,15 +74,16 @@ async function login(req, res) {
     });
 
     if (!user) {
-      return res.json(apiResponse.response('UNAUTHORIZED', { message: 'Invalid credentials.' }));
+      await bcrypt.compare(password, DUMMY_HASH); // timing equalization (anti-enumeration)
+      return apiResponse.send(res, 'UNAUTHORIZED', { message: 'Invalid credentials.' });
     }
 
     // Account lockout
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const minutesLeft = Math.ceil((user.lockedUntil - Date.now()) / 60000);
-      return res.json(apiResponse.response('TOO_MANY_REQUESTS', {
+      return apiResponse.send(res, 'TOO_MANY_REQUESTS', {
         message: `Account locked. Try again in ${minutesLeft} minute(s).`,
-      }));
+      });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
@@ -87,11 +99,11 @@ async function login(req, res) {
       await prisma.user.update({ where: { id: user.id }, data: updateData });
       await auditLogger('LOGIN_FAILED', { id: user.id, name: user.name, role: user.role }, req);
 
-      return res.json(apiResponse.response('UNAUTHORIZED', { message: 'Invalid credentials.' }));
+      return apiResponse.send(res, 'UNAUTHORIZED', { message: 'Invalid credentials.' });
     }
 
     if (!user.active) {
-      return res.json(apiResponse.response('FORBIDDEN', { message: 'Account is deactivated.' }));
+      return apiResponse.send(res, 'FORBIDDEN', { message: 'Account is deactivated.' });
     }
 
     // Reset failed attempts on successful login
@@ -100,20 +112,20 @@ async function login(req, res) {
       data:  { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
 
-    const accessToken   = generateToken(user);
-    const refreshTokenVal = generateRefreshToken(user);
+    const accessToken      = generateToken(user);
+    const refreshTokenVal  = generateRefreshToken();
     await storeRefreshToken(user.id, refreshTokenVal, req);
 
     await auditLogger('LOGIN_SUCCESS', user, req);
 
-    return res.json(apiResponse.response('SUCCESS', {
+    return apiResponse.send(res, 'SUCCESS', {
       token:        accessToken,
       refreshToken: refreshTokenVal,
       user:         buildUserPayload(user),
-    }));
+    });
   } catch (error) {
     console.error('[AuthService.login]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 
@@ -121,42 +133,36 @@ async function login(req, res) {
 async function refreshToken(req, res) {
   try {
     const { refreshToken: token } = req.body;
-    if (!token) return res.json(apiResponse.response('UNAUTHORIZED'));
+    if (!token) return apiResponse.send(res, 'UNAUTHORIZED');
 
-    let decoded;
-    try {
-      decoded = verifyRefreshToken(token);
-    } catch {
-      return res.json(apiResponse.response('UNAUTHORIZED'));
-    }
-
+    // Opaque token — the token IS the lookup key (hashed). No JWT to verify.
     const stored = await prisma.refreshToken.findFirst({
-      where: { userId: decoded.userId, tokenHash: hashToken(token), revoked: false },
+      where: { tokenHash: hashToken(token), revoked: false },
     });
 
     if (!stored || stored.expiredAt < new Date()) {
-      return res.json(apiResponse.response('UNAUTHORIZED'));
+      return apiResponse.send(res, 'UNAUTHORIZED');
     }
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    const user = await prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user || user.isDeleted || !user.active) {
-      return res.json(apiResponse.response('UNAUTHORIZED'));
+      return apiResponse.send(res, 'UNAUTHORIZED');
     }
 
     // Rotate: revoke old, issue new pair
     await prisma.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
 
     const newAccessToken  = generateToken(user);
-    const newRefreshToken = generateRefreshToken(user);
+    const newRefreshToken = generateRefreshToken();
     await storeRefreshToken(user.id, newRefreshToken, req);
 
-    return res.json(apiResponse.response('SUCCESS', {
+    return apiResponse.send(res, 'SUCCESS', {
       token:        newAccessToken,
       refreshToken: newRefreshToken,
-    }));
+    });
   } catch (error) {
     console.error('[AuthService.refreshToken]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 
@@ -172,16 +178,23 @@ async function logout(req, res) {
       });
     }
 
+    // tokenVersion invalidates ALL access tokens — revoke every refresh token
+    // too, so "logout all sessions" is actually enforced end-to-end.
+    await prisma.refreshToken.updateMany({
+      where: { userId: req.user.id, revoked: false },
+      data:  { revoked: true },
+    });
+
     await prisma.user.update({
       where: { id: req.user.id },
       data:  { tokenVersion: { increment: 1 } },
     });
 
     await auditLogger('LOGOUT', req.user, req);
-    return res.json(apiResponse.response('SUCCESS'));
+    return apiResponse.send(res, 'SUCCESS');
   } catch (error) {
     console.error('[AuthService.logout]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 
@@ -189,11 +202,11 @@ async function logout(req, res) {
 async function me(req, res) {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    if (!user) return res.json(apiResponse.response('NOT_FOUND'));
-    return res.json(apiResponse.response('SUCCESS', buildUserPayload(user)));
+    if (!user) return apiResponse.send(res, 'NOT_FOUND');
+    return apiResponse.send(res, 'SUCCESS', buildUserPayload(user));
   } catch (error) {
     console.error('[AuthService.me]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 
@@ -206,33 +219,46 @@ async function updateProfile(req, res) {
       data:  { ...(name ? { name } : {}), ...(phone ? { phone } : {}) },
     });
     await auditLogger('PROFILE_UPDATED', req.user, req);
-    return res.json(apiResponse.response('SUCCESS', buildUserPayload(updated)));
+    return apiResponse.send(res, 'SUCCESS', buildUserPayload(updated));
   } catch (error) {
     console.error('[AuthService.updateProfile]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 
-// ── Forgot password (OTP via email — wire up your email service here) ─────────
+// ── Forgot password (OTP via email) ───────────────────────────────────────────
 async function forgotPassword(req, res) {
   try {
     const { email } = req.body;
-    if (!email) return res.json(apiResponse.response('VALIDATION_ERROR', { message: 'Email is required.' }));
+    if (!email) return apiResponse.send(res, 'VALIDATION_ERROR', { message: 'Email is required.' });
 
     const user = await prisma.user.findFirst({ where: { email, isDeleted: false } });
 
-    // Always return success to avoid user enumeration
-    if (!user) return res.json(apiResponse.response('SUCCESS', { message: 'If that email exists, an OTP has been sent.' }));
+    // Always return success to avoid user enumeration. When the email does not
+    // exist, burn the same time a full OTP issuance would take so response
+    // timing does not leak account existence.
+    if (user) {
+      const otp = otpGenerator.generate(6, {
+        upperCaseAlphabets: false, lowerCaseAlphabets: false, specialChars: false,
+      });
+      await client.set(RESET_OTP_KEY(email), hashToken(otp), 'EX', RESET_OTP_TTL_MINS * 60);
+      // Fresh OTP → fresh attempt budget.
+      await client.del(RESET_ATTEMPTS_KEY(email));
+      // A failing SMTP send must NOT surface as a 500 here (that would leak that
+      // the account exists and broke). Log it; the user can request again.
+      try {
+        await sendPasswordResetOtp(email, otp, RESET_OTP_TTL_MINS);
+      } catch (sendErr) {
+        console.error('[AuthService.forgotPassword] OTP email failed:', sendErr.message);
+      }
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
 
-    // TODO: generate OTP, store hashed OTP in DB, send via emailService
-    // const otp = generateOtp(); // plug in your OTP generator
-    // await prisma.user.update({ where: { id: user.id }, data: { resetOtp: hash(otp), resetOtpExpiry: ... } });
-    // await emailService.sendPasswordReset(user.email, otp);
-
-    return res.json(apiResponse.response('SUCCESS', { message: 'If that email exists, an OTP has been sent.' }));
+    return apiResponse.send(res, 'SUCCESS', { message: 'If that email exists, an OTP has been sent.' });
   } catch (error) {
     console.error('[AuthService.forgotPassword]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 
@@ -241,20 +267,45 @@ async function resetPassword(req, res) {
   try {
     const { email, otp, newPassword } = req.body;
     if (!email || !otp || !newPassword) {
-      return res.json(apiResponse.response('VALIDATION_ERROR', { message: 'email, otp, and newPassword are required.' }));
+      return apiResponse.send(res, 'VALIDATION_ERROR', { message: 'email, otp, and newPassword are required.' });
     }
 
-    // TODO: validate OTP against DB, check expiry, hash newPassword, update user, increment tokenVersion
-    // const user = await prisma.user.findFirst({ where: { email, resetOtp: hash(otp), resetOtpExpiry: { gt: new Date() } } });
-    // if (!user) return res.json(apiResponse.response('INVALID_REQUEST', { message: 'Invalid or expired OTP.' }));
-    // const hashed = await bcrypt.hash(newPassword, 12);
-    // await prisma.user.update({ where: { id: user.id }, data: { password: hashed, tokenVersion: { increment: 1 }, resetOtp: null } });
-    // await auditLogger('PASSWORD_RESET', user, req);
+    // Brute-force guard: cap OTP validation attempts per email (IP rotation
+    // defeats the route limiter; this budget is bound to the email itself).
+    const attempts = await client.incr(RESET_ATTEMPTS_KEY(email));
+    if (attempts === 1) await client.expire(RESET_ATTEMPTS_KEY(email), RESET_OTP_TTL_MINS * 60);
+    if (attempts > MAX_OTP_ATTEMPTS) {
+      await client.del(RESET_OTP_KEY(email));
+      return apiResponse.send(res, 'INVALID_REQUEST', { message: 'Too many attempts. Request a new OTP.' });
+    }
 
-    return res.json(apiResponse.response('SUCCESS', { message: 'Password reset successful.' }));
+    const storedHash = await client.get(RESET_OTP_KEY(email));
+    if (!storedHash || storedHash !== hashToken(String(otp).trim())) {
+      return apiResponse.send(res, 'INVALID_REQUEST', { message: 'Invalid or expired OTP.' });
+    }
+
+    const user = await prisma.user.findFirst({ where: { email, isDeleted: false } });
+    if (!user) return apiResponse.send(res, 'INVALID_REQUEST', { message: 'Invalid or expired OTP.' });
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: user.id },
+      data:  { password: hashed, tokenVersion: { increment: 1 } },
+    });
+    // Kill every existing session: revoke all refresh tokens so a token stolen
+    // BEFORE the reset cannot be replayed against /refresh for its full 7d TTL.
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id, revoked: false },
+      data:  { revoked: true },
+    });
+    await client.del(RESET_OTP_KEY(email));
+    await client.del(RESET_ATTEMPTS_KEY(email));
+    await auditLogger('PASSWORD_RESET', user, req);
+
+    return apiResponse.send(res, 'SUCCESS', { message: 'Password reset successful.' });
   } catch (error) {
     console.error('[AuthService.resetPassword]', error);
-    return res.json(apiResponse.response('ERROR'));
+    return apiResponse.send(res, 'SERVER_ERROR');
   }
 }
 

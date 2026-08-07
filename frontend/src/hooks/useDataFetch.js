@@ -7,28 +7,36 @@
  *     [page, limit]   // re-fetch when these change
  *   )
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export function useDataFetch(fetcher, deps = []) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
 
-  const fetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await fetcher()
-      setData(result)
-    } catch (err) {
-      setError(err)
-    } finally {
-      setLoading(false)
+  const [tick, setTick] = useState(0)
+  const fetcherRef = useRef(fetcher)
+
+  // Keep ref in sync AFTER render so consumers can pass inline fetchers.
+  useEffect(() => { fetcherRef.current = fetcher })
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await fetcherRef.current()
+        if (!cancelled) setData(result)
+      } catch (err) {
+        if (!cancelled) setError(err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
+    run()
+    return () => { cancelled = true }
+  }, [tick, ...deps]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { fetch() }, [fetch])
-
-  return { data, loading, error, refetch: fetch }
+  return { data, loading, error, refetch: () => setTick(t => t + 1) }
 }

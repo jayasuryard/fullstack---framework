@@ -187,8 +187,7 @@ function Hero() {
         initial={{ scaleY: 0 }} animate={{ scaleY: 1 }}
         transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
         style={{ originY: 0 }}
-        className="absolute top-20 bottom-20 left-16 w-px hidden lg:block"
-        style2={{ background: `linear-gradient(180deg, transparent, ${T.gold}, transparent)` }}>
+        className="absolute top-20 bottom-20 left-16 w-px hidden lg:block">
         <div className="h-full w-px"
           style={{ background: `linear-gradient(180deg, transparent, ${T.gold}, transparent)` }} />
       </motion.div>

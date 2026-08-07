@@ -18,11 +18,12 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { PrivateRoute } from './components/PrivateRoute'
-import { Loading } from './components/common'
 
 // ── Page imports — add yours here ────────────────────────────────────────────
-// import LoginPage from './pages/LoginPage'
-// import DashboardPage from './pages/dashboard/DashboardPage'
+import LoginPage          from './pages/auth/LoginPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import ResetPasswordPage  from './pages/auth/ResetPasswordPage'
+import DashboardPage      from './pages/dashboard/DashboardPage'
 import { lazy, Suspense } from 'react'
 const DesignGallery = lazy(() => import('./components/designs/Gallery'))
 
@@ -32,21 +33,20 @@ function DefaultRedirect() {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) {
-    // Uncomment once you have a /login route:
-    // return <Navigate to="/login" replace />
-    return <div style={{ padding: 32 }}>Please add a /login route in App.jsx.</div>
+    return <Navigate to="/login" replace />
   }
   // Map roles to their default landing page:
-  // const roleRoutes = { admin: '/admin/dashboard', superAdmin: '/superadmin/dashboard' }
-  // return <Navigate to={roleRoutes[user.role] || '/dashboard'} replace />
-  return <div style={{ padding: 32 }}>Logged in as {user.name}. Add your routes in App.jsx.</div>
+  const roleRoutes = { admin: '/admin/dashboard', superAdmin: '/superadmin/dashboard' }
+  return <Navigate to={roleRoutes[user.role] || '/dashboard'} replace />
 }
 
 function AppRoutes() {
   return (
     <Routes>
       {/* ── Public ──────────────────────────────────────────────────────────── */}
-      {/* <Route path="/login" element={<LoginPage />} /> */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       {/* <Route path="/public/*" element={<PublicPage />} /> */}
 
       {/* ── Design Gallery — browse all 10 landing page templates ───────────── */}
@@ -62,20 +62,37 @@ function AppRoutes() {
       } />
 
       {/* ── Protected — add role-specific routes inside PrivateRoute ─────────── */}
-      {/* Example:
       <Route
         path="/admin/*"
         element={
           <PrivateRoute allowedRoles={['admin', 'superAdmin']}>
-            <MainLayout />
+            <DashboardPage />
           </PrivateRoute>
         }
       >
         <Route path="dashboard" element={<DashboardPage />} />
       </Route>
-      */}
+      <Route
+        path="/superadmin/*"
+        element={
+          <PrivateRoute allowedRoles={['superAdmin']}>
+            <DashboardPage />
+          </PrivateRoute>
+        }
+      >
+        <Route path="dashboard" element={<DashboardPage />} />
+      </Route>
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute allowedRoles={['admin', 'superAdmin']}>
+            <DashboardPage />
+          </PrivateRoute>
+        }
+      />
 
       {/* ── Fallback ─────────────────────────────────────────────────────────── */}
+      <Route path="/unauthorized" element={<div style={{ padding: 32 }}>403 — You don't have access to this page.</div>} />
       <Route path="/" element={<DefaultRedirect />} />
       {/* Do NOT redirect * back to / — that creates an infinite loop when /login
           has no route yet. Render a plain 404 instead. */}

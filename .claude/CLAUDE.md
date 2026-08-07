@@ -18,7 +18,7 @@ A production-grade SaaS scaffold. Use it to build new SaaS products by adding do
 | Rule | Detail |
 |------|--------|
 | No TypeScript | Plain `.js` / `.jsx` only |
-| No test framework | Don't add tests unless explicitly asked |
+| Tests | `node:test` (backend) + Vitest (frontend) — run `npm test` in each before finishing |
 | No Prettier | ESLint 9 flat config only (`eslint.config.js`) |
 | No comments explaining what | Only add comments for non-obvious WHY (constraints, workarounds) |
 | No unnecessary abstractions | Three similar lines > premature abstraction |
@@ -48,6 +48,19 @@ npm run gen:model <Name> field:Type ...
 npm run gen:migration add_<name>
 ```
 
+### Realtime (shared WS hub)
+```js
+// Backend — emit from any service or worker:
+const { emitToChannel } = require('./helpers/ws/hub');
+await emitToChannel('user:' + userId, { event: 'plan-changed' });
+
+// Frontend — subscribe (auto-connects, reconnects with backoff):
+import { wsClient } from '../server/ws';
+wsClient.onChannel('user:' + userId, (payload) => ...);
+// or in React: useWebSocket('user:' + userId, (payload) => ...)
+```
+Hub is wired in `server.js` (`attachWsHub` + `attachJobWsServer`). Never `new WebSocket()` directly in pages.
+
 ### Background job
 ```js
 // Enqueue:
@@ -69,8 +82,8 @@ const { jobId } = await enqueueJob('queue:action', payload, { userId: req.user.i
 
 ## What needs wiring before production
 
-- `AuthService.js` — `forgotPassword` and `resetPassword` have TODOs; need email service + OTP storage
-- `backend/server.js` — uncomment `attachJobWsServer(server)` if using live job progress
+- `AuthService.js` — password reset is wired: Redis OTP (10-min TTL, 5-attempt cap) + `emailService`. Configure `SMTP_*` env vars for delivery. Reset revokes all refresh tokens + bumps `tokenVersion`.
+- `backend/server.js` — WS hub (`attachWsHub` + `attachJobWsServer`) is wired; job progress + generic channels work out of the box
 - `MainLayout.jsx` and `MobileLayout.jsx` — define `NAV_ITEMS` with your product's navigation
 - `frontend/src/App.jsx` — add all product page routes
 - `frontend/src/server/api.js` — add product domain namespaces to the `api` object
@@ -81,8 +94,8 @@ const { jobId } = await enqueueJob('queue:action', payload, { userId: req.user.i
 - **Tailwind CSS 4** uses the Vite plugin. Don't add `tailwind.config.js` — it breaks things.
 - **React Router 7** — use v7 patterns. Legacy v5 patterns break.
 - **Express 5** — async handlers auto-throw; no `try/catch` + `next(err)` needed for unhandled rejections.
-- **Redis 5** — uses `redis` npm package v5 with `await client.connect()`. Not ioredis.
-- **PM2 cluster** — in-memory rate limits are per-worker. Use `rate-limit-redis` if cross-worker shared limits are required.
+- **Redis 5** — uses `redis` npm package v5 with `await client.connect()`. Not ioredis. `server.js` awaits `redisReady` before listening (rate limiter / OTP / WS relay depend on it).
+- **PM2 cluster** — rate limits are Redis-backed (`rate-limit-redis`, prefix `rl:`), shared across workers. In-memory fallback if Redis down.
 - **No sticky sessions needed** — Redis-backed auth and jobs work across all PM2 instances.
 
 ## Files to update when you add features

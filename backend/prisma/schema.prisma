@@ -14,7 +14,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ── Framework Models ──────────────────────────────────────────────────────────
@@ -51,7 +50,9 @@ model RefreshToken {
   expiredAt  DateTime
   createdAt  DateTime @default(now())
 
-  user       User     @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiredAt])
 }
 
 model AuditLog {

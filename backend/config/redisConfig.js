@@ -2,7 +2,7 @@
 const redis = require('redis');
 
 const client = redis.createClient({
-  url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
+  url:      `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${process.env.REDIS_PORT || 6379}`,
   password: process.env.REDIS_PASSWORD || undefined,
   database: process.env.REDIS_DB ? Number(process.env.REDIS_DB) : 0,
 });
@@ -12,7 +12,14 @@ client.on('ready',   () => console.log('Redis client ready'));
 client.on('error',   (err) => console.error('Redis connection error:', err));
 client.on('end',     () => console.log('Redis connection closed'));
 
-client.connect().catch(console.error);
+// Resolves true once connected, false on connection failure (never rejects — the
+// caller decides: dev degrades to memory fallbacks, prod refuses to boot).
+const redisReady = client.connect()
+  .then(() => true)
+  .catch((err) => {
+    console.error('[Redis] Initial connect failed:', err.message);
+    return false;
+  });
 
 async function getCache(key) {
   try {
@@ -38,7 +45,10 @@ async function deleteCache(...keys) {
       if (key.includes('*')) {
         let cursor = '0';
         do {
-          const [nextCursor, found] = await client.scan(cursor, 'MATCH', key, 'COUNT', 100);
+          const { cursor: nextCursor, keys: found } = await client.scan(cursor, {
+            MATCH: key,
+            COUNT: 100,
+          });
           cursor = nextCursor;
           if (found.length > 0) await client.del(...found);
         } while (cursor !== '0');
@@ -51,4 +61,4 @@ async function deleteCache(...keys) {
   }
 }
 
-module.exports = { client, getCache, setCache, deleteCache };
+module.exports = { client, redisReady, getCache, setCache, deleteCache };

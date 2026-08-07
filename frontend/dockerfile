@@ -18,5 +18,12 @@ COPY server.js ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public 2>/dev/null || true
 
-EXPOSE 80
+# Non-root runtime — 8080 (not 80) so a high port is permitted.
+USER node
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 \
+CMD wget -qO- http://localhost:8080/health || exit 1
+
 CMD ["node", "server.js"]

@@ -1,7 +1,8 @@
 // JWT access-token + refresh-token helpers.
 // Core payload: id, role, baseRole (for context switching), accessLevel, tokenVersion.
 // Add product-specific JWT claims by passing an `extraClaims` object to generateToken().
-const jwt = require('jsonwebtoken');
+const jwt    = require('jsonwebtoken');
+const crypto = require('crypto');
 
 /**
  * @param {object} user         DB user row (must have id, role, accessLevel, tokenVersion)
@@ -29,15 +30,18 @@ const generateToken = (user, context = null, extraClaims = {}) => {
   );
 };
 
-const generateRefreshToken = (user) => {
-  return jwt.sign(
-    { userId: user.id },
-    process.env.REFRESH_SECRET,
-    { expiresIn: process.env.REFRESH_EXPIRY }
-  );
-};
+// Refresh tokens are OPAQUE random values, NOT JWTs. A JWT refresh token would be
+// deterministic (same user + same secret + same TTL → identical token every login),
+// which (a) collides on the unique tokenHash column on the second concurrent login
+// and (b) gives every session of a user the SAME refresh token — rotation becomes
+// meaningless. Expiry lives in the DB row (RefreshToken.expiredAt), not the token.
+const generateRefreshToken = () =>
+  crypto.randomBytes(48).toString('base64url');
 
-const verifyAccessToken  = (token) => jwt.verify(token, process.env.JWT_SECRET);
-const verifyRefreshToken = (token) => jwt.verify(token, process.env.REFRESH_SECRET);
+const verifyAccessToken = (token) => jwt.verify(token, process.env.JWT_SECRET);
 
-module.exports = { generateToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken };
+// NOTE: verifyRefreshToken is intentionally GONE. Refresh tokens are opaque — there
+// is nothing to verify cryptographically. Validation = row lookup by tokenHash
+// (+ revoked/expired checks) in AuthService.refreshToken.
+
+module.exports = { generateToken, generateRefreshToken, verifyAccessToken };

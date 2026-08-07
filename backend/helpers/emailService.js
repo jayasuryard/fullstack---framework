@@ -1,0 +1,57 @@
+// Email transport helper (nodemailer SMTP).
+// Wire: SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / SMTP_SECURE.
+// If SMTP_HOST is not configured the service runs in dev mode: the email body is
+// printed to the server log instead of being sent. Never fake a send — callers
+// get a boolean back so they know what happened.
+const nodemailer = require('nodemailer');
+
+const FROM_ADDRESS = process.env.SMTP_FROM || process.env.SUPPORT_EMAIL || 'noreply@localhost';
+
+let transport = null;
+function getTransport() {
+  if (!process.env.SMTP_HOST) return null;
+  if (!transport) {
+    transport = nodemailer.createTransport({
+      host:   process.env.SMTP_HOST,
+      port:   Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth:   process.env.SMTP_USER
+        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
+        : undefined,
+    });
+  }
+  return transport;
+}
+
+/**
+ * Send a transactional email.
+ * @param {string} to
+ * @param {string} subject
+ * @param {string} html
+ * @param {string} [text]
+ * @returns {Promise<{ sent: boolean, dev?: boolean }>}
+ */
+async function sendMail(to, subject, html, text = '') {
+  const t = getTransport();
+  if (!t) {
+    console.log(`[emailService] DEV MODE (SMTP_HOST not set) — email to ${to}:\nSubject: ${subject}\n${text || html.replace(/<[^>]+>/g, '')}`);
+    return { sent: false, dev: true };
+  }
+  await t.sendMail({ from: FROM_ADDRESS, to, subject, html, text: text || undefined });
+  return { sent: true };
+}
+
+/**
+ * Send a password-reset OTP.
+ * @param {string} to
+ * @param {string} otp
+ * @param {number} ttlMinutes
+ */
+async function sendPasswordResetOtp(to, otp, ttlMinutes) {
+  const subject = 'Your password reset code';
+  const html    = `<p>Your password reset code is <strong>${otp}</strong>.</p>
+<p>It expires in ${ttlMinutes} minutes. If you did not request this, ignore this email.</p>`;
+  return sendMail(to, subject, html, `Your password reset code is ${otp}. It expires in ${ttlMinutes} minutes.`);
+}
+
+module.exports = { sendMail, sendPasswordResetOtp };

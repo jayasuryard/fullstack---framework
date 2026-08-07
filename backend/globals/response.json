@@ -35,10 +35,6 @@
         "code": 1008,
         "message": { "en": "Too many requests. Please try again later." }
     },
-    "ERROR": {
-        "code": 1009,
-        "message": { "en": "An error occurred." }
-    },
     "TOKEN_EXPIRED": {
         "code": 1010,
         "message": { "en": "Token has expired." }

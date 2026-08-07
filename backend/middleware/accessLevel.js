@@ -13,15 +13,15 @@ const apiResponse = require('../helpers/apiResponse');
 module.exports = function requireReadWrite(readOnlyRoles = []) {
   return (req, res, next) => {
     if (readOnlyRoles.includes(req.user.role)) {
-      return res.json(apiResponse.response('FORBIDDEN', {
+      return apiResponse.send(res, 'FORBIDDEN', {
         message: 'This account has read-only access.',
-      }));
+      });
     }
 
     if (req.user.accessLevel === 'read_only') {
-      return res.json(apiResponse.response('FORBIDDEN', {
+      return apiResponse.send(res, 'FORBIDDEN', {
         message: 'Your account has read-only access. Contact your administrator.',
-      }));
+      });
     }
 
     next();

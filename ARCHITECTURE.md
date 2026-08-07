@@ -13,10 +13,11 @@ AI-agent reference for building new SaaS products on this scaffold. Read this be
 | Cache / Queue | Redis 5 (custom BLPOP job queue, pub/sub for WS progress) |
 | Auth       | JWT (jsonwebtoken) + bcrypt + refresh-token rotation |
 | File storage | AWS S3 (primary) + Cloudinary (secondary) |
-| Email      | AWS SES |
+| Email      | SMTP via nodemailer (`SMTP_*` env — AWS SES-compatible) |
 | SMS/WhatsApp | Twilio |
 | Payment    | Razorpay (plugin slot — unwire if not needed) |
-| Background jobs | Custom Redis queue (`helpers/queue/jobQueue.js`) + node-cron |
+| Background jobs | Custom Redis queue (`helpers/queue/jobQueue.js`) + node-cron (3 retries + stuck-job recovery) |
+| Testing    | node:test (backend) · Vitest (frontend) |
 | Process manager | PM2 (cluster for API, fork for worker) |
 | Frontend   | React 19 + React Router 7 + Vite 7 (SWC) |
 | Styling    | Tailwind CSS 4 (Vite plugin, no config file needed) |
@@ -62,13 +63,15 @@ backend/
 │   ├── verifyToken.js     JWT auth. Populates req.user.
 │   ├── role.js            RBAC. Usage: role('admin', 'superAdmin')
 │   ├── accessLevel.js     Read-only enforcement. Usage: requireReadWrite(['management'])
-│   ├── rateLimit.js       Rate limiters. Pre-built: loginLimiter, otpSendLimiter, generalLimiter.
+│   ├── rateLimit.js       Rate limiters (Redis-backed). Pre-built: loginLimiter, otpSendLimiter, generalLimiter.
 │   └── upload.js          multer memory storage. Usage: upload.single('photo')
 ├── helpers/               Stateless utilities used by any module.
 │   ├── apiResponse.js     Response envelope. Usage: apiResponse.response('SUCCESS', data)
 │   ├── auditLogger.js     DB audit log. Usage: auditLogger('ACTION', req.user, req)
 │   ├── paginate.js        Prisma pagination. Usage: const { skip, take, meta } = paginate(req.query)
 │   ├── generateToken.js   JWT helpers. Usage: generateToken(user), generateRefreshToken(user)
+│   ├── emailService.js    SMTP transport (dev mode logs when SMTP_HOST unset). Usage: sendEmail({...})
+│   ├── ws/hub.js          Reusable WS emitter/receiver. attachWsHub(server) + emitToChannel(channel, payload)
 │   └── queue/jobQueue.js  Job queue. Usage: enqueueJob('queue-name', payload)
 ├── globals/response.json  Response code registry. Add new codes here.
 ├── routes/index.js        Route aggregator. Add new module mounts here.
@@ -96,9 +99,11 @@ frontend/src/
 ├── contexts/
 │   └── AuthContext.jsx    Global auth state. Access via useAuth().
 ├── hooks/
-│   └── useDataFetch.js    Generic data-fetch hook.
+│   ├── useDataFetch.js    Generic data-fetch hook.
+│   └── useWebSocket.js    Realtime hook. Usage: useWebSocket('user:123', handler)
 ├── server/
-│   └── api.js             Single API gateway. All fetch() calls live here.
+│   ├── api.js             Single API gateway. All fetch() calls live here.
+│   └── ws.js              Single WS client (wsClient). All new WebSocket() calls live here.
 ├── utils/
 │   └── subdomain.js       Multi-tenant subdomain detection.
 └── pages/                 Feature pages. Group by domain: pages/<feature>/<Feature>Page.jsx
@@ -213,10 +218,10 @@ async function list(req, res) {
       prisma.model.findMany({ skip, take, where }),
       prisma.model.count({ where }),
     ])
-    res.json(apiResponse.response('SUCCESS', { rows, pagination: meta(total) }))
+    res.json(apiResponse.send(res, 'SUCCESS', { rows, pagination: meta(total) }))
   } catch (error) {
     console.error('[ModuleService.list]', error)
-    res.json(apiResponse.response('ERROR'))
+    apiResponse.send(res, 'SERVER_ERROR') // HTTP 500 + envelope code 1005
   }
 }
 ```
@@ -266,11 +271,20 @@ import { FeaturePage } from './pages/feature/FeaturePage'
 ## Authentication Pattern
 
 The framework implements:
-- JWT access token (24h) + refresh token (7d, single-use rotation)
-- Hashed refresh tokens stored in the `RefreshToken` DB table
+- JWT access token (24h) + **opaque** refresh token (7d, single-use rotation)
+  - Refresh tokens are `randomBytes(48)` values — NOT JWTs. A deterministic JWT
+    refresh token produced the same `tokenHash` on every login (multi-device
+    collision) and made rotation meaningless. Expiry lives in the DB row, not the token.
+- Hashed refresh tokens stored in the `RefreshToken` DB table (lookup by `tokenHash` is the only validation)
 - `tokenVersion` on the `User` model — increment to force-invalidate all tokens (on logout, password reset)
 - Account lockout after 5 consecutive failed logins (15-minute lock)
 - Soft delete (`isDeleted`) + active flag checked on every request
+- Anti-enumeration: unknown-user login burns a real bcrypt compare; forgot-password
+  returns the same message + delay whether or not the email exists
+- Rate limits: Redis-backed (`rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:` keys —
+  distinct prefixes so limiter counters can't collide), degrading to an in-process
+  sliding window if Redis drops (never hangs or 500s). Prod refuses to boot if
+  Redis is unreachable within 15s.
 
 To add product-specific JWT claims (e.g. `tenantId`), pass them as `extraClaims` to `generateToken`:
 ```js

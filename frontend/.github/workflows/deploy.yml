@@ -75,15 +75,48 @@ jobs:
             echo "Pull latest image"
             docker pull $IMAGE
 
-            echo "Stop old container"
-            docker stop ${APP} || true
-            docker rm   ${APP} || true
-
-            echo "Run new container"
+            echo "Start staged container on temp port 4000"
+            docker rm -f ${APP}-new || true
             docker run -d \
-              --name ${APP} \
+              --name ${APP}-new \
               --restart always \
-              -p 8080:80 \
+              -p 4000:80 \
               $IMAGE
 
-            echo "✅ Frontend deployed successfully"
+            echo "Waiting for app startup..."
+            sleep 10
+
+            SUCCESS=0
+            for i in $(seq 1 24); do
+              if curl --retry 3 --retry-delay 2 -fs http://localhost:4000/health; then
+                SUCCESS=$((SUCCESS+1))
+              else
+                SUCCESS=0
+              fi
+              if [ "$SUCCESS" -ge 3 ]; then
+                echo "Staged container is stable."
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$SUCCESS" -ge 3 ]; then
+              echo "Switching traffic..."
+              docker stop ${APP} || true
+              docker rm   ${APP} || true
+
+              docker run -d \
+                --name ${APP} \
+                --restart always \
+                -p 8080:80 \
+                $IMAGE
+
+              docker rm -f ${APP}-new || true
+              echo "✅ Frontend deployed successfully"
+            else
+              echo "❌ Health check failed. Rolling back..."
+              docker logs ${APP}-new || true
+              docker rm -f ${APP}-new || true
+              echo "Old container kept alive."
+              exit 1
+            fi
