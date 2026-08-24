@@ -30,8 +30,8 @@ export default function Input({
   return (
     <div className="flex flex-col gap-1">
       {label && (
-        <label htmlFor={name} className="text-sm font-semibold text-gray-700">
-          {label} {required && <span className="text-red-500">*</span>}
+        <label htmlFor={name} className="text-sm font-semibold text-white/70">
+          {label} {required && <span className="text-red-400">*</span>}
         </label>
       )}
       <input
@@ -47,8 +47,8 @@ export default function Input({
         disabled={disabled}
         readOnly={readOnly}
         min={type === 'number' ? '0' : undefined} // Force UI to stop at 0
-        className={`px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all ${
-          disabled ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : ''
+        className={`px-4 py-3 rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400/60 focus:bg-white/10 transition-all ${
+          disabled ? 'bg-white/[0.03] text-white/30 cursor-not-allowed' : ''
         }`}
         {...rest}
       />

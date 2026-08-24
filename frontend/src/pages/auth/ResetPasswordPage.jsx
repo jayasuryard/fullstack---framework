@@ -1,8 +1,9 @@
 // src/pages/auth/ResetPasswordPage.jsx
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { KeyRound, Lock, Mail } from 'lucide-react'
 import api from '../../server/api'
-import { Button, Input } from '../../components/common'
+import { AuthInput, AuthLabel, AuthNotice, AuthShell, MotionButton } from './AuthShell'
 
 /**
  * Reset-password page — email + 6-digit OTP + new password.
@@ -34,76 +35,84 @@ export default function ResetPasswordPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
-          <div className="text-2xl font-bold text-gray-900 mb-2">Password updated</div>
-          <p className="text-sm text-gray-500 mb-6">All your sessions were signed out.</p>
-          <Link to="/login" className="text-sm text-orange-600 hover:text-orange-700">
+      <AuthNotice
+        title="Password updated"
+        body="All your sessions were signed out."
+        footer={
+          <Link to="/login" className="text-sm text-orange-300 hover:text-orange-200 transition-colors">
             Sign in with your new password
           </Link>
-        </div>
-      </div>
+        }
+      />
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <div className="mb-8 text-center">
-            <div className="text-2xl font-bold text-gray-900 mb-1">Set a new password</div>
-            <div className="text-sm text-gray-500">Use the code from your email.</div>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Email"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
-            <Input
-              label="6-digit code"
-              name="otp"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="123456"
-              required
-              inputMode="numeric"
-              autoComplete="one-time-code"
-            />
-            <Input
-              label="New password"
-              name="newPassword"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              required
-              autoComplete="new-password"
-            />
-            <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? 'Resetting…' : 'Reset password'}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center text-sm">
-            <Link to="/forgot-password" className="text-orange-600 hover:text-orange-700">
-              Request a new code
-            </Link>
-          </div>
+    <AuthShell
+      title="Set a new password"
+      subtitle="Use the code from your email."
+      error={error}
+      footer={
+        <Link to="/forgot-password" className="text-orange-300 hover:text-orange-200 transition-colors">
+          Request a new code
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <AuthLabel htmlFor="email">Email</AuthLabel>
+          <AuthInput
+            icon={Mail}
+            id="email"
+            name="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            autoComplete="email"
+          />
         </div>
-      </div>
-    </div>
+
+        <div>
+          <AuthLabel htmlFor="otp">6-digit code</AuthLabel>
+          <AuthInput
+            icon={KeyRound}
+            id="otp"
+            name="otp"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="123456"
+            required
+            inputMode="numeric"
+            autoComplete="one-time-code"
+          />
+        </div>
+
+        <div>
+          <AuthLabel htmlFor="newPassword">New password</AuthLabel>
+          <AuthInput
+            icon={Lock}
+            id="newPassword"
+            name="newPassword"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="At least 8 characters"
+            required
+            autoComplete="new-password"
+          />
+        </div>
+
+        <MotionButton
+          whileTap={{ scale: 0.98 }}
+          type="submit"
+          disabled={submitting}
+          className="w-full rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting ? 'Resetting…' : 'Reset password'}
+        </MotionButton>
+      </form>
+    </AuthShell>
   )
 }

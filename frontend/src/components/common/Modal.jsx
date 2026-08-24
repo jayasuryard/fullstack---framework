@@ -10,22 +10,22 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   };
   
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-white/10 transition-all" onClick={onClose}>
-      <div 
-        className={`bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-black/50 transition-all" onClick={onClose}>
+      <div
+        className={`bg-[#14141f] border border-white/10 rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
-          <button 
+        <div className="sticky top-0 bg-[#14141f]/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
+          <h2 className="text-xl font-semibold text-white">{title}</h2>
+          <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+            className="text-white/50 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
             aria-label="Close dialog"
           >
             x
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-6 text-white/80">
           {children}
         </div>
       </div>

@@ -13,11 +13,11 @@ export default function Button({
   const baseStyles = 'inline-flex items-center justify-center gap-2 font-semibold transition-all outline-none';
   
   const variants = {
-    primary: 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-200 border border-transparent',
-    secondary: 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-sm',
-    danger: 'bg-red-50 hover:bg-red-100 text-red-600 border border-transparent',
-    success: 'bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-200 border border-transparent',
-    outline: 'bg-transparent border-2 border-gray-200 text-gray-600 hover:border-gray-300'
+    primary: 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-lg shadow-orange-500/25 border border-transparent',
+    secondary: 'bg-white/5 hover:bg-white/10 text-white border border-white/15',
+    danger: 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-transparent',
+    success: 'bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/25 border border-transparent',
+    outline: 'bg-transparent border-2 border-white/15 text-white/70 hover:border-white/30'
   };
 
   const sizes = {

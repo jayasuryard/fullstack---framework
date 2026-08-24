@@ -1,8 +1,9 @@
 // src/pages/auth/ForgotPasswordPage.jsx
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Mail } from 'lucide-react'
 import api from '../../server/api'
-import { Button, Input } from '../../components/common'
+import { AuthInput, AuthLabel, AuthNotice, AuthShell, MotionButton } from './AuthShell'
 
 /**
  * Forgot-password page — requests a 6-digit OTP by email.
@@ -31,58 +32,54 @@ export default function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
-          <div className="text-2xl font-bold text-gray-900 mb-2">Check your email</div>
-          <p className="text-sm text-gray-500 mb-6">
-            If that email exists, we sent a 6-digit code. It expires in 10 minutes.
-          </p>
-          <Link to="/reset-password" className="text-sm text-orange-600 hover:text-orange-700">
+      <AuthNotice
+        title="Check your email"
+        body="If that email exists, we sent a 6-digit code. It expires in 10 minutes."
+        footer={
+          <Link to="/reset-password" className="text-sm text-orange-300 hover:text-orange-200 transition-colors">
             I have a code — reset my password
           </Link>
-        </div>
-      </div>
+        }
+      />
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <div className="mb-8 text-center">
-            <div className="text-2xl font-bold text-gray-900 mb-1">Reset your password</div>
-            <div className="text-sm text-gray-500">We'll email you a one-time code.</div>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Email"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
-            <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? 'Sending…' : 'Send code'}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center text-sm">
-            <Link to="/login" className="text-orange-600 hover:text-orange-700">
-              Back to sign in
-            </Link>
-          </div>
+    <AuthShell
+      title="Reset your password"
+      subtitle="We'll email you a one-time code."
+      error={error}
+      footer={
+        <Link to="/login" className="text-orange-300 hover:text-orange-200 transition-colors">
+          Back to sign in
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <AuthLabel htmlFor="email">Email</AuthLabel>
+          <AuthInput
+            icon={Mail}
+            id="email"
+            name="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            autoComplete="email"
+          />
         </div>
-      </div>
-    </div>
+
+        <MotionButton
+          whileTap={{ scale: 0.98 }}
+          type="submit"
+          disabled={submitting}
+          className="w-full rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting ? 'Sending…' : 'Send code'}
+        </MotionButton>
+      </form>
+    </AuthShell>
   )
 }

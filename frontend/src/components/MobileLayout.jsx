@@ -19,19 +19,19 @@ export const MobileLayout = () => {
   )
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen bg-[#0B0B16]">
       <main className="flex-1 overflow-y-auto pb-16">
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-2 z-50">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/5 backdrop-blur-xl border-t border-white/10 flex justify-around py-2 z-50">
         {visibleItems.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
               `flex flex-col items-center gap-0.5 text-xs px-3 py-1 rounded ${
-                isActive ? 'text-indigo-600' : 'text-gray-500'
+                isActive ? 'text-orange-300' : 'text-white/50'
               }`
             }
           >

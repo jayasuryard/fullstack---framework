@@ -42,34 +42,34 @@ export const Select = ({
   return (
     <div className={`flex flex-col gap-1.5 relative ${className}`} ref={dropdownRef}>
       {label && (
-        <label htmlFor={inputId} className="text-sm font-bold text-gray-700">
-          {label} {required && <span className="text-red-500">*</span>}
+        <label htmlFor={inputId} className="text-sm font-bold text-white/70">
+          {label} {required && <span className="text-red-400">*</span>}
         </label>
       )}
-      
+
       <div
         id={inputId}
         className={`
-          relative flex items-center justify-between px-4 py-3 border rounded-xl text-sm bg-white
-          focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent
-          ${disabled ? 'bg-gray-100 cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-orange-300'}
-          ${error ? 'border-red-500 bg-red-50' : 'border-gray-300'}
+          relative flex items-center justify-between px-4 py-3 border rounded-xl text-sm bg-white/5
+          focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-transparent
+          ${disabled ? 'bg-white/[0.03] cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-orange-400/50'}
+          ${error ? 'border-red-400/50 bg-red-500/5' : 'border-white/15'}
           transition-all
         `}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         tabIndex={disabled ? -1 : 0}
       >
-        <span className={`block truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900 font-medium'}`}>
+        <span className={`block truncate ${!selectedOption ? 'text-white/30' : 'text-white font-medium'}`}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
-        <FaChevronDown className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180 text-orange-500' : ''}`} size={12} />
+        <FaChevronDown className={`text-white/40 transition-transform ${isOpen ? 'rotate-180 text-orange-400' : ''}`} size={12} />
       </div>
 
       {isOpen && (
-        <div className="absolute z-[9999] top-[calc(100%+4px)] left-0 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto animate-fade-in py-1">
+        <div className="absolute z-[9999] top-[calc(100%+4px)] left-0 w-full bg-[#14141f] border border-white/10 rounded-xl shadow-xl max-h-60 overflow-y-auto animate-fade-in py-1">
           <ul className="flex flex-col">
             <li
-              className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${!value ? 'bg-orange-50 text-orange-700 font-bold' : 'text-gray-500 hover:bg-gray-50'}`}
+              className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${!value ? 'bg-orange-500/10 text-orange-300 font-bold' : 'text-white/40 hover:bg-white/5'}`}
               onClick={() => handleSelect('')}
             >
               {placeholder}
@@ -77,7 +77,7 @@ export const Select = ({
             {options.map((option, index) => (
               <li
                 key={index}
-                className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${value === option.value ? 'bg-orange-50 text-orange-700 font-bold' : 'text-gray-700 hover:bg-gray-50 hover:text-orange-600 font-medium'}`}
+                className={`px-4 py-2.5 text-sm cursor-pointer transition-colors ${value === option.value ? 'bg-orange-500/10 text-orange-300 font-bold' : 'text-white/70 hover:bg-white/5 hover:text-orange-300 font-medium'}`}
                 onClick={() => handleSelect(option.value)}
               >
                 {option.label}
@@ -86,7 +86,7 @@ export const Select = ({
           </ul>
         </div>
       )}
-      {error && <span className="text-xs font-medium text-red-500 mt-0.5">{error}</span>}
+      {error && <span className="text-xs font-medium text-red-400 mt-0.5">{error}</span>}
     </div>
   );
 };

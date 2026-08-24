@@ -42,7 +42,7 @@ function DefaultRedirect() {
 
 function AppRoutes() {
   return (
-    <Suspense fallback={<div style={{ padding: 32 }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ padding: 32, background: '#0B0B16', color: '#fff', minHeight: '100vh' }}>Loading…</div>}>
       <Routes>
         {/* ── Public ──────────────────────────────────────────────────────────── */}
         <Route path="/login" element={<LoginPage />} />
@@ -93,11 +93,11 @@ function AppRoutes() {
       />
 
       {/* ── Fallback ─────────────────────────────────────────────────────────── */}
-      <Route path="/unauthorized" element={<div style={{ padding: 32 }}>403 — You don't have access to this page.</div>} />
+      <Route path="/unauthorized" element={<div style={{ padding: 32, background: '#0B0B16', color: '#fff', minHeight: '100vh' }}>403 — You don't have access to this page.</div>} />
       <Route path="/" element={<DefaultRedirect />} />
       {/* Do NOT redirect * back to / — that creates an infinite loop when /login
           has no route yet. Render a plain 404 instead. */}
-      <Route path="*" element={<div style={{ padding: 32 }}>404 — Page not found</div>} />
+      <Route path="*" element={<div style={{ padding: 32, background: '#0B0B16', color: '#fff', minHeight: '100vh' }}>404 — Page not found</div>} />
       </Routes>
     </Suspense>
   )

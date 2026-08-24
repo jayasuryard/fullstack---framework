@@ -1,8 +1,9 @@
 // src/pages/auth/LoginPage.jsx
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
-import { Button, Input } from '../../components/common'
+import { AuthInput, AuthLabel, AuthShell, MotionButton } from './AuthShell'
 
 /**
  * Login page. Uses AuthContext.login() which stores the session via setAuthSession
@@ -16,9 +17,10 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const [userName,  setUserName]  = useState('')
-  const [password,  setPassword]  = useState('')
-  const [error,     setError]     = useState('')
+  const [userName, setUserName] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const from = location.state?.from?.pathname || null
@@ -44,55 +46,66 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <div className="mb-8 text-center">
-            <div className="text-3xl font-bold text-gray-900 mb-1">Welcome back</div>
-            <div className="text-sm text-gray-500">Sign in to your account</div>
-          </div>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to your account to continue"
+      error={error}
+      footer={
+        <Link to="/forgot-password" className="text-orange-300 hover:text-orange-200 transition-colors">
+          Forgot your password?
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <AuthLabel htmlFor="userName">Username</AuthLabel>
+          <AuthInput
+            icon={Mail}
+            id="userName"
+            name="userName"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            placeholder="you@example.com"
+            required
+            autoComplete="username"
+          />
+        </div>
 
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Username"
-              name="userName"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="username"
-            />
-            <Input
-              label="Password"
+        <div>
+          <AuthLabel htmlFor="password">Password</AuthLabel>
+          <div className="relative">
+            <AuthInput
+              icon={Lock}
+              id="password"
               name="password"
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
               autoComplete="current-password"
+              className="pr-11"
             />
-            <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center text-sm">
-            <Link to="/forgot-password" className="text-orange-600 hover:text-orange-700">
-              Forgot your password?
-            </Link>
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
         </div>
-        <p className="mt-6 text-center text-xs text-gray-400">
-          © {new Date().getFullYear()} — SaaS Scaffold
-        </p>
-      </div>
-    </div>
+
+        <MotionButton
+          whileTap={{ scale: 0.98 }}
+          type="submit"
+          disabled={submitting}
+          className="w-full rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </MotionButton>
+      </form>
+    </AuthShell>
   )
 }
