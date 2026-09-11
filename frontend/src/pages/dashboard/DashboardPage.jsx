@@ -1,35 +1,29 @@
 // src/pages/dashboard/DashboardPage.jsx
-// Placeholder landing page for authenticated roles. Replace with real widgets.
+// Placeholder landing page for authenticated roles. Rendered through the real
+// MainLayout/MobileLayout shells (see AppShell) — replace this body with real
+// widgets once the product has some.
 import { useAuth } from '../../contexts/AuthContext'
 import { Card } from '../../components/common'
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
 
   return (
-    <div className="min-h-screen bg-[#0B0B16] p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            Welcome back, {user?.name || user?.email}
-          </h1>
-          <p className="text-sm text-white/50">
-            Role: {user?.role} · Access: {user?.accessLevel}
-          </p>
-        </div>
-        <button
-          onClick={logout}
-          className="text-sm text-red-400 hover:text-red-300 font-medium"
-        >
-          Sign out
-        </button>
+    <div className="min-h-full p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-white">
+          Welcome back, {user?.name || user?.email}
+        </h1>
+        <p className="text-sm text-white/50">
+          Role: {user?.role} · Access: {user?.accessLevel}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card title="Your app">Build your product on this scaffold</Card>
-        <Card title="Auth ready">Login, refresh rotation, lockout, OTP reset all wired</Card>
-        <Card title="Next step">Add a module: npm run gen:module &lt;name&gt;</Card>
-      </div>
+      <Card title="No widgets configured yet">
+        This dashboard has no product widgets wired up yet. Add your own via
+        the route in <code>App.jsx</code> and the nav entries in{' '}
+        <code>MainLayout.jsx</code> / <code>MobileLayout.jsx</code>.
+      </Card>
     </div>
   )
 }

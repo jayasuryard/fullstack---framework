@@ -18,6 +18,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { PrivateRoute } from './components/PrivateRoute'
+import { AppShell } from './components/AppShell'
 import { lazy, Suspense } from 'react'
 
 // ── Page imports — add yours here (lazy = code-split per route) ─────────────
@@ -63,34 +64,27 @@ function AppRoutes() {
         } />
 
       {/* ── Protected — add role-specific routes inside PrivateRoute ─────────── */}
+      {/* AppShell picks MainLayout (desktop) or MobileLayout (mobile) and renders
+          matched children below via its <Outlet />. */}
       <Route
-        path="/admin/*"
         element={
           <PrivateRoute allowedRoles={['admin', 'superAdmin']}>
-            <DashboardPage />
+            <AppShell />
           </PrivateRoute>
         }
       >
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/admin/dashboard" element={<DashboardPage />} />
       </Route>
       <Route
-        path="/superadmin/*"
         element={
           <PrivateRoute allowedRoles={['superAdmin']}>
-            <DashboardPage />
+            <AppShell />
           </PrivateRoute>
         }
       >
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="/superadmin/dashboard" element={<DashboardPage />} />
       </Route>
-      <Route
-        path="/dashboard"
-        element={
-          <PrivateRoute allowedRoles={['admin', 'superAdmin']}>
-            <DashboardPage />
-          </PrivateRoute>
-        }
-      />
 
       {/* ── Fallback ─────────────────────────────────────────────────────────── */}
       <Route path="/unauthorized" element={<div style={{ padding: 32, background: '#0B0B16', color: '#fff', minHeight: '100vh' }}>403 — You don't have access to this page.</div>} />

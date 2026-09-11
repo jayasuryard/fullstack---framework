@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 // Define your product's mobile nav items here (keep to 4-5 max).
 // Shape: [{ label: string, path: string, icon: ReactNode, roles: string[] }]
 const MOBILE_NAV_ITEMS = [
-  // { label: 'Home', path: '/dashboard', icon: null, roles: ['admin'] },
+  { label: 'Home', path: '/dashboard', icon: null, roles: ['admin', 'superAdmin'] },
 ]
 
 export const MobileLayout = () => {
