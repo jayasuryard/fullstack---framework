@@ -16,7 +16,7 @@ AI-agent reference for building new SaaS products on this scaffold. Read this be
 | Email      | SMTP via nodemailer (`SMTP_*` env — AWS SES-compatible) |
 | SMS/WhatsApp | Twilio |
 | Payment    | Razorpay (plugin slot — unwire if not needed) |
-| Background jobs | Custom Redis queue (`helpers/queue/jobQueue.js`) + node-cron (3 retries + stuck-job recovery) |
+| Background jobs | Custom Redis queue (`helpers/queue/jobQueue.js`) + node-cron (atomic BLMOVE claim, lease/heartbeat recovery, 3 attempts) |
 | Testing    | node:test (backend) · Vitest (frontend) |
 | Process manager | PM2 (cluster for API, fork for worker) |
 | Frontend   | React 19 + React Router 7 + Vite 7 (SWC) |
