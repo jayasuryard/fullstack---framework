@@ -296,6 +296,12 @@ test('reset-password: full OTP flow (wrong OTP → cap → correct OTP → login
   assert.strictEqual(capped.status, 400);
   assert.match(capped.body.responseData.result.message, /Too many attempts/);
 
+  // The resend cooldown (F01 fix) intentionally blocks a same-account resend
+  // within 60s — without it, an attacker could call forgot-password again to
+  // reset the attempt budget and keep grinding the OTP. Simulate the cooldown
+  // having elapsed rather than waiting 60s in-test.
+  await client.del(`auth:reset:resend:${u.email.toLowerCase()}`);
+
   // Fresh OTP → fresh budget → correct reset.
   await withIp('198.51.100.211').post('/api/v1/common/auth/forgot-password').send({ email: u.email });
   const hash2 = await client.get(`auth:reset:otp:${u.email.toLowerCase()}`);
