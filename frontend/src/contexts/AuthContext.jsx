@@ -1,13 +1,18 @@
 /**
  * Auth context — global auth state, login, logout, token management, role/access flags.
  *
- * Pattern: localStorage hydration → /me validation on mount → automatic 401 recovery.
+ * Pattern: silent refresh (httpOnly cookie) on mount → /me validation → automatic
+ * 401 recovery. The access token itself lives in memory only (owned by api.js,
+ * see F11) — a hard page refresh loses it on purpose; this mount effect silently
+ * re-derives a new one from the refresh cookie, so the session still persists.
+ *
  * To add role context switching (e.g. impersonation, tenant switching), extend this
  * context with switchContext / clearContext following the same pattern.
  */
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from 'react'
-import api, { clearAuthSession, getStoredToken, getStoredUser, setAuthSession } from '../server/api'
+import api, { clearAuthSession, getStoredUser, onSessionInvalidated, refreshSession, setAuthSession, setStoredUser } from '../server/api'
+import { wsClient } from '../server/ws'
 
 const AuthContext = createContext(null)
 
@@ -21,15 +26,18 @@ export const AuthProvider = ({ children }) => {
   const [user,    setUser]    = useState(() => getStoredUser())
   const [loading, setLoading] = useState(true)
 
-  // Validate stored token on mount
+  // Bootstrap: no access token survives a reload (it's memory-only), so silently
+  // trade the httpOnly refresh cookie for a fresh one before asking /me who we are.
   useEffect(() => {
-    const validate = async () => {
-      const token = getStoredToken()
-      if (!token) { setLoading(false); return }
-
+    const bootstrap = async () => {
       try {
+        // Dedup'd (see refreshSession in api.js) so React 19 StrictMode's double
+        // effect invocation in dev doesn't fire the cookie-rotating refresh twice.
+        const refreshed = await refreshSession()
+        if (!refreshed) throw new Error('no session')
         const profile = await api.common.me()
         setUser(profile)
+        setStoredUser(profile)
       } catch {
         clearAuthSession()
         setUser(null)
@@ -37,12 +45,23 @@ export const AuthProvider = ({ children }) => {
         setLoading(false)
       }
     }
-    validate()
+    bootstrap()
+  }, [])
+
+  // F19/F20: api.js is the only place that knows a session got invalidated out
+  // from under React (a recovery refresh failed). Sync local state — and tear
+  // down any realtime connection, which would otherwise keep retrying against a
+  // dead session — the moment that happens.
+  useEffect(() => {
+    return onSessionInvalidated(() => {
+      setUser(null)
+      wsClient.disconnect()
+    })
   }, [])
 
   const login = async (userName, password) => {
     const result = await api.common.login({ userName, password })
-    setAuthSession({ token: result.token, refreshToken: result.refreshToken, user: result.user })
+    setAuthSession({ token: result.token, user: result.user })
     setUser(result.user)
     return result
   }
@@ -51,6 +70,7 @@ export const AuthProvider = ({ children }) => {
     try { await api.common.logout() } catch { /* ignore */ }
     clearAuthSession()
     setUser(null)
+    wsClient.disconnect()
   }
 
   const updateProfile = async (formData) => {

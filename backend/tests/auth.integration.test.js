@@ -26,9 +26,10 @@ if (ENABLED) {
 // Infra modules are required LAZILY inside before() so that a plain `npm test`
 // (RUN_INTEST not set) never loads them: connecting Redis/Postgres would keep the
 // event loop alive and hang the unit-test run.
-let express, supertest, bcrypt, multer;
-let prisma, client, redisReady, routes, apiResponse;
+let express, supertest, bcrypt, multer, cookieParser;
+let prisma, client, redisReady, routes, apiResponse, verifyToken;
 let request;
+let app;
 let admin;          // seeded user
 let adminPassword;
 
@@ -36,7 +37,12 @@ function buildApp() {
   const app = express();
   app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
   app.use(express.json({ limit: '1mb' }));
+  app.use(cookieParser());
   app.use('/api/v1', routes);
+  // Test-only hook: surfaces req.user AS POPULATED BY verifyToken, without any
+  // handler re-fetching the user from the DB (unlike /common/auth/me, which
+  // would mask a middleware-level regression). Used only to assert F12.
+  app.get('/test/whoami', verifyToken, (req, res) => res.json({ role: req.user.role }));
   app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
   app.get('/health/deep', async (req, res) => {
     const [db, redis] = await Promise.allSettled([prisma.$queryRaw`SELECT 1`, client.ping()]);
@@ -64,14 +70,16 @@ const userFor = (p) => {
 
 before(async () => {
   if (!ENABLED) return;
-  express     = require('express');
-  supertest   = require('supertest');
-  bcrypt      = require('bcrypt');
-  multer      = require('multer');
+  express      = require('express');
+  supertest    = require('supertest');
+  bcrypt       = require('bcrypt');
+  multer       = require('multer');
+  cookieParser = require('cookie-parser');
   prisma      = require('../config/dbConnect');
   ({ client, redisReady } = require('../config/redisConfig'));
   routes      = require('../routes');
   apiResponse = require('../helpers/apiResponse');
+  verifyToken = require('../middleware/verifyToken');
 
   await redisReady;
   await client.flushDb();
@@ -89,7 +97,8 @@ before(async () => {
     },
   });
 
-  request = supertest(buildApp());
+  app = buildApp();
+  request = supertest(app);
 });
 
 after(async () => {
@@ -223,6 +232,39 @@ test('refresh: garbage token → 401', { skip }, async () => {
   assert.strictEqual(res.status, 401);
 });
 
+// ── F11: httpOnly refresh cookie ───────────────────────────────────────────────
+
+test('login/refresh: sets httpOnly refreshToken cookie; cookie alone drives refresh', { skip }, async () => {
+  // A dedicated user (rather than the shared `admin`) so this test's extra login
+  // calls don't eat into the loginLimiter's shared per-IP+userName budget (5/15min)
+  // that other tests in this file also draw against.
+  const u = userFor('itest_cookie');
+  await prisma.user.create({
+    data: {
+      userName: u.userName, email: u.email, name: u.name,
+      password: bcrypt.hashSync(u.password, 12), role: 'admin',
+    },
+  });
+
+  const login = await request.post('/api/v1/common/auth/login')
+    .send({ userName: u.userName, password: u.password });
+  const setCookie = login.headers['set-cookie'] || [];
+  const refreshCookie = setCookie.find((c) => c.startsWith('refreshToken='));
+  assert.ok(refreshCookie, 'login should set a refreshToken cookie');
+  assert.match(refreshCookie, /HttpOnly/i);
+
+  // Refresh using ONLY the cookie jar — no body refreshToken — proves the cookie
+  // is sufficient (authoritative) on its own.
+  const agent = supertest.agent(app);
+  const agentLogin = await agent.post('/api/v1/common/auth/login')
+    .send({ userName: u.userName, password: u.password });
+  assert.ok((agentLogin.headers['set-cookie'] || []).some((c) => c.startsWith('refreshToken=')));
+
+  const refresh = await agent.post('/api/v1/common/auth/refresh').send({});
+  assert.strictEqual(refresh.status, 200);
+  assert.ok(refresh.body.responseData.result.token);
+});
+
 // ── Logout / tokenVersion ──────────────────────────────────────────────────────
 
 test('logout: revokes all sessions, tokenVersion invalidates access token', { skip }, async () => {
@@ -322,6 +364,32 @@ test('reset-password: full OTP flow (wrong OTP → cap → correct OTP → login
   const newLogin = await request.post('/api/v1/common/auth/login')
     .send({ userName: u.userName, password: 'BrandNew!Pass1' });
   assert.strictEqual(newLogin.status, 200);
+});
+
+// ── F12: stale authorization claims ────────────────────────────────────────────
+
+test('verifyToken: role downgraded out-of-band reflects on the very next request', { skip }, async () => {
+  const u = userFor('itest_downgrade');
+  await prisma.user.create({
+    data: {
+      userName: u.userName, email: u.email, name: u.name,
+      password: bcrypt.hashSync(u.password, 12), role: 'admin',
+    },
+  });
+  const login = await request.post('/api/v1/common/auth/login')
+    .send({ userName: u.userName, password: u.password });
+  const { token } = login.body.responseData.result;
+
+  const before = await request.get('/test/whoami').set('Authorization', `Bearer ${token}`);
+  assert.strictEqual(before.body.role, 'admin');
+
+  // Simulate an out-of-band admin action (no tokenVersion bump — this codebase
+  // has no role-change endpoint yet, so the JWT itself is untouched).
+  await prisma.user.update({ where: { userName: u.userName }, data: { role: 'member' } });
+
+  const after = await request.get('/test/whoami').set('Authorization', `Bearer ${token}`);
+  assert.strictEqual(after.status, 200);
+  assert.strictEqual(after.body.role, 'member', 'stale JWT role must not win over the current DB role');
 });
 
 // ── Upload filtering ───────────────────────────────────────────────────────────

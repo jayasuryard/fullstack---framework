@@ -1,10 +1,11 @@
 // Express application entry point.
 // Wires middleware, routes, WebSocket servers, and cron jobs.
-const express = require('express');
-const http    = require('http');
-const cors    = require('cors');
-const helmet  = require('helmet');
-const multer  = require('multer');
+const express      = require('express');
+const http         = require('http');
+const cors         = require('cors');
+const helmet       = require('helmet');
+const cookieParser = require('cookie-parser');
+const multer       = require('multer');
 const { randomUUID } = require('node:crypto');
 const pinoHttp = require('pino-http');
 require('dotenv').config();
@@ -45,7 +46,12 @@ app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
 // localhost:5173 (Vite). Adjust in .env per environment.
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors({ origin: allowedOrigins }));
+// credentials:true + an explicit (never wildcard) origin list — required for the
+// browser to send/receive the httpOnly refresh-token cookie (F11) cross-origin.
+app.use(cors({ origin: allowedOrigins, credentials: true }));
+
+// Parses the httpOnly refresh-token cookie for POST /common/auth/refresh|logout.
+app.use(cookieParser());
 
 // Security headers: CSP, X-Frame-Options, nosniff, HSTS (behind TLS).
 // The API serves JSON only — the SPA (separate container) defines its own CSP.

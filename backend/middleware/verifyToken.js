@@ -7,8 +7,13 @@
  *  3. User exists in DB, not soft-deleted, not deactivated
  *  4. tokenVersion matches (catches forced logouts / password resets)
  *
- * Populates req.user with the full DB row plus effective role/accessLevel
- * from the token (supports context-switched tokens where role !== baseRole).
+ * Populates req.user with the full DB row. Effective role/accessLevel come from
+ * the CURRENT DB row, not the JWT payload — this codebase has no tokenVersion-bump
+ * on role change yet, so an admin->member downgrade must take effect on the very
+ * next request, not wait for the 24h JWT to expire (F12). The one exception is a
+ * context-switched token (decoded.contextId set, e.g. impersonation): those are
+ * short-lived (JWT_CONTEXT_EXPIRES_IN, 30m) and INTENTIONALLY carry a role/accessLevel
+ * that differs from the user's base row, so the token's own claims win for those.
  * To add product-specific per-request grant validation, add it after the tokenVersion check.
  */
 const jwt        = require('jsonwebtoken');
@@ -47,13 +52,18 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
+    const isContextSwitched = !!decoded.contextId;
+
     req.user = {
       ...user,
       exp:             decoded.exp,
-      baseRole:        decoded.baseRole || user.role,
+      baseRole:        user.role,
       baseAccessLevel: user.accessLevel,
-      role:            decoded.role || user.role,
-      accessLevel:     decoded.accessLevel ?? user.accessLevel,
+      // Context-switched tokens keep the claims they were issued with; everything
+      // else reflects the user's CURRENT row so a role/accessLevel change applies
+      // on the very next request instead of waiting for the JWT to expire.
+      role:            isContextSwitched ? (decoded.role || user.role) : user.role,
+      accessLevel:     isContextSwitched ? (decoded.accessLevel ?? user.accessLevel) : user.accessLevel,
       contextId:       decoded.contextId || null,
     };
 

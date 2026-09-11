@@ -22,6 +22,43 @@ const app = express();
 const DIST_DIR = path.join(__dirname, "dist");
 const API_BASE = process.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
 
+// ── Content-Security-Policy (F11) ───────────────────────────────────────────────
+// Set as a real response header (not a <meta> tag) since this server controls
+// every response — a header covers frame-ancestors too, which <meta> cannot
+// express. connect-src includes the API origin (REST) and WS origin (realtime) —
+// both configurable since they vary per deployment. The app ships no external
+// script/style tags (see index.html) and one first-party inline bootstrap script,
+// externalized to /branding-bootstrap.js precisely so script-src can stay
+// 'self'-only with no 'unsafe-inline'.
+function originOf(url) {
+  try { return new URL(url).origin; } catch { return null; }
+}
+const apiOrigin = originOf(process.env.VITE_API_BASE_URL || "http://localhost:3000");
+const wsOrigin =
+  originOf(process.env.VITE_WS_URL || "") ||
+  (apiOrigin ? apiOrigin.replace(/^http/, "ws") : null);
+const connectSrc = ["'self'", apiOrigin, wsOrigin].filter(Boolean).join(" ");
+
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'", // Tailwind's compiled CSS is a static file; 'unsafe-inline' covers inline style="" attrs from framer-motion/react-easy-crop, which CSP style-src (not the separate style-src-attr) still governs in most browsers.
+  "img-src 'self' data: https:",
+  "font-src 'self' data:",
+  `connect-src ${connectSrc}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", CSP);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
 const DEFAULT_BRANDING = {
   name:        process.env.APP_NAME        || "SaaS App",
   description: process.env.APP_DESCRIPTION || "Your SaaS Platform",

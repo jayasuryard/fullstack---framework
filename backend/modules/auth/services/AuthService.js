@@ -29,6 +29,28 @@ const RESET_ATTEMPTS_KEY  = (email) => `auth:reset:attempts:${email.toLowerCase(
 const hashToken = (token) =>
   crypto.createHash('sha256').update(token).digest('hex');
 
+// httpOnly refresh-token cookie (F11). SameSite is configurable because whether
+// the frontend/backend share a parent domain is a per-deployment decision — set
+// REFRESH_COOKIE_SAMESITE=strict in prod when frontend/API share a parent domain,
+// or 'none' when they're fully cross-site (requires Secure, which is forced below
+// outside development anyway).
+const REFRESH_COOKIE_NAME = 'refreshToken';
+const refreshCookieOptions = () => ({
+  httpOnly:  true,
+  secure:    process.env.NODE_ENV === 'production',
+  sameSite:  process.env.REFRESH_COOKIE_SAMESITE || 'lax',
+  path:      '/api/v1/common/auth',
+  maxAge:    REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
+});
+
+function setRefreshCookie(res, token) {
+  res.cookie(REFRESH_COOKIE_NAME, token, refreshCookieOptions());
+}
+
+function clearRefreshCookie(res) {
+  res.clearCookie(REFRESH_COOKIE_NAME, { ...refreshCookieOptions(), maxAge: undefined });
+}
+
 // Burn a real bcrypt compare when the user doesn't exist so response timing does
 // not leak whether an account exists (unknown-user vs wrong-password must be ~equal).
 const DUMMY_HASH = bcrypt.hashSync('framework-dummy-password', 12);
@@ -89,14 +111,21 @@ async function login(req, res) {
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
-      const failedAttempts = (user.failedLoginAttempts || 0) + 1;
-      const updateData     = { failedLoginAttempts: failedAttempts };
+      // Atomic increment (DB-level SET failedLoginAttempts = failedLoginAttempts + 1)
+      // instead of read-then-write, so concurrent failed logins from the same
+      // account can't race and under-count (F12).
+      const updated = await prisma.user.update({
+        where: { id: user.id },
+        data:  { failedLoginAttempts: { increment: 1 } },
+      });
 
-      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-        updateData.lockedUntil = new Date(Date.now() + LOCK_DURATION_MINS * 60 * 1000);
+      if (updated.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data:  { lockedUntil: new Date(Date.now() + LOCK_DURATION_MINS * 60 * 1000) },
+        });
       }
 
-      await prisma.user.update({ where: { id: user.id }, data: updateData });
       await auditLogger('LOGIN_FAILED', { id: user.id, name: user.name, role: user.role }, req);
 
       return apiResponse.send(res, 'UNAUTHORIZED', { message: 'Invalid credentials.' });
@@ -118,6 +147,11 @@ async function login(req, res) {
 
     await auditLogger('LOGIN_SUCCESS', user, req);
 
+    // Refresh token is the httpOnly cookie (authoritative, F11). Still echoed in
+    // the body for any not-yet-migrated caller, but the frontend must not persist
+    // it anywhere — the cookie is the sole source of truth for the browser client.
+    setRefreshCookie(res, refreshTokenVal);
+
     return apiResponse.send(res, 'SUCCESS', {
       token:        accessToken,
       refreshToken: refreshTokenVal,
@@ -132,7 +166,9 @@ async function login(req, res) {
 // ── Refresh ───────────────────────────────────────────────────────────────────
 async function refreshToken(req, res) {
   try {
-    const { refreshToken: token } = req.body;
+    // Cookie is authoritative; body fallback kept for any caller not yet migrated
+    // to cookie-based refresh (F11).
+    const token = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
     if (!token) return apiResponse.send(res, 'UNAUTHORIZED');
 
     // Opaque token — the token IS the lookup key (hashed). No JWT to verify.
@@ -156,6 +192,8 @@ async function refreshToken(req, res) {
     const newRefreshToken = generateRefreshToken();
     await storeRefreshToken(user.id, newRefreshToken, req);
 
+    setRefreshCookie(res, newRefreshToken);
+
     return apiResponse.send(res, 'SUCCESS', {
       token:        newAccessToken,
       refreshToken: newRefreshToken,
@@ -169,7 +207,7 @@ async function refreshToken(req, res) {
 // ── Logout ────────────────────────────────────────────────────────────────────
 async function logout(req, res) {
   try {
-    const { refreshToken: token } = req.body;
+    const token = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
 
     if (token) {
       await prisma.refreshToken.updateMany({
@@ -189,6 +227,8 @@ async function logout(req, res) {
       where: { id: req.user.id },
       data:  { tokenVersion: { increment: 1 } },
     });
+
+    clearRefreshCookie(res);
 
     await auditLogger('LOGOUT', req.user, req);
     return apiResponse.send(res, 'SUCCESS');
@@ -300,6 +340,7 @@ async function resetPassword(req, res) {
     });
     await client.del(RESET_OTP_KEY(email));
     await client.del(RESET_ATTEMPTS_KEY(email));
+    clearRefreshCookie(res);
     await auditLogger('PASSWORD_RESET', user, req);
 
     return apiResponse.send(res, 'SUCCESS', { message: 'Password reset successful.' });

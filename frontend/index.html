@@ -17,28 +17,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>__OG_TITLE__</title>
 
-  <!--
-    Branding bootstrap. On the Express server (frontend/server.js) the
-    __OG_*__ placeholders above are replaced per-subdomain before this script
-    runs — it becomes a no-op. On static hosts (frontend/nginx.conf) the raw
-    placeholders reach the browser; this script applies the default title and
-    swaps the favicon for the product OG image. No flash: runs before React
-    mounts. Multi-tenant API-driven branding lives in server.js (getBranding,
-    wired via BRANDING_API_PATH env).
-  -->
-  <script>
-    (function () {
-      var title = document.title;
-      if (title.indexOf('__OG_TITLE__') !== -1) {
-        document.title = 'SaaS App';
-      }
-      var favicon = document.getElementById('dynamic-favicon');
-      var ogImage = document.querySelector('meta[property="og:image"]');
-      if (favicon && ogImage && ogImage.content && ogImage.content.indexOf('__OG_IMAGE__') === -1) {
-        favicon.href = ogImage.content;
-      }
-    })();
-  </script>
+  <!-- Branding bootstrap — externalized to /branding-bootstrap.js so the page's
+       CSP can use script-src 'self' without 'unsafe-inline' (F11). See that file
+       for what it does and why. -->
+  <script src="/branding-bootstrap.js"></script>
 </head>
 <body>
   <div id="root"></div>

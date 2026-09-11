@@ -22,16 +22,6 @@ class FakeWebSocket {
   _message(payload)       { this.onmessage?.({ data: JSON.stringify(payload) }) }
 }
 
-const localStorageStub = (() => {
-  const store = new Map()
-  return {
-    getItem:   (k) => store.has(k) ? store.get(k) : null,
-    setItem:   (k, v) => store.set(k, String(v)),
-    removeItem: (k) => store.delete(k),
-    clear:     () => store.clear(),
-  }
-})()
-
 // ── Suite ─────────────────────────────────────────────────────────────────────
 let wsClient
 let resetClient
@@ -39,24 +29,24 @@ let resetClient
 describe('wsClient', () => {
   beforeEach(async () => {
     FakeWebSocket.instances = []
-    globalThis.window = { localStorage: localStorageStub }
-    localStorageStub.setItem('token', 'test-token')
     globalThis.WebSocket = FakeWebSocket
 
-    const mod = await import('./ws')
-    wsClient = mod.wsClient
+    const wsMod  = await import('./ws')
+    const apiMod = await import('./api')
+    wsClient = wsMod.wsClient
+    apiMod.setAccessToken('test-token')
     resetClient = () => {
       wsClient.disconnect()
       wsClient.channels.clear()
       wsClient.channelHandlers.clear()
       wsClient.retryDelay = 500
       wsClient.intentionalClose = false
+      wsClient.authRejected = false
     }
     resetClient()
   })
 
   afterEach(() => {
-    delete globalThis.window
     delete globalThis.WebSocket
     vi.useRealTimers()
   })
@@ -142,5 +132,59 @@ describe('wsClient', () => {
     first.close()
     vi.advanceTimersByTime(5000)
     expect(FakeWebSocket.instances.length).toBe(1)
+  })
+
+  // ── F20 ───────────────────────────────────────────────────────────────────
+
+  it('onChannel auto-connects without a separate connect() call', () => {
+    const cb = vi.fn()
+    wsClient.onChannel('job:auto', cb)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    expect(FakeWebSocket.instances[0].url).toContain('channels=job%3Aauto')
+  })
+
+  it('two independent onChannel listeners on the same channel do not break each other', () => {
+    const cbA = vi.fn()
+    const cbB = vi.fn()
+    const offA = wsClient.onChannel('shared', cbA)
+    wsClient.onChannel('shared', cbB)
+    const ws = FakeWebSocket.instances[0]
+    ws._open()
+
+    // Unsubscribing A's own listener must not remove B's, nor tell the server to
+    // unsubscribe the channel while B is still listening.
+    offA()
+    ws.sent.length = 0
+    ws._message({ type: 'event', channel: 'shared', payload: { ok: true } })
+    expect(cbA).not.toHaveBeenCalled()
+    expect(cbB).toHaveBeenCalledWith({ ok: true })
+    expect(ws.sent.find(m => m.includes('unsubscribe'))).toBeUndefined()
+    expect(wsClient.channels.has('shared')).toBe(true)
+  })
+
+  it('server-side unsubscribe is sent only once the last listener leaves', () => {
+    const offA = wsClient.onChannel('shared', vi.fn())
+    const offB = wsClient.onChannel('shared', vi.fn())
+    const ws = FakeWebSocket.instances[0]
+    ws._open()
+
+    offA()
+    expect(ws.sent.find(m => m.includes('unsubscribe'))).toBeUndefined()
+
+    offB()
+    expect(ws.sent.find(m => m.includes('unsubscribe'))).toBeDefined()
+    expect(wsClient.channels.has('shared')).toBe(false)
+  })
+
+  it('stops retrying after an auth-rejected close code (4001)', () => {
+    vi.useFakeTimers()
+    wsClient.connect(['a'])
+    const first = FakeWebSocket.instances[0]
+    first._open()
+    first.readyState = FakeWebSocket.CLOSED
+    first.onclose?.({ code: 4001 })
+    vi.advanceTimersByTime(30_000)
+    expect(FakeWebSocket.instances.length).toBe(1)
+    expect(wsClient.currentState).toBe('closed')
   })
 })
