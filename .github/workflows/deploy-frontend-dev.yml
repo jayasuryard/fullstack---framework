@@ -1,0 +1,166 @@
+# Deploy Frontend — DEV environment
+#
+# Lives at repo ROOT .github/workflows/ (see deploy-backend-dev.yml for why).
+# Gated on root CI passing via `workflow_run` — see deploy-backend-dev.yml.
+#
+# VITE_* values are passed as Docker build-args (not a committed/copied .env
+# file — see frontend/dockerfile and frontend/.dockerignore) so the image
+# build never depends on a local .env entering the build context.
+#
+# Container listens on 8080 internally (frontend/dockerfile EXPOSE 8080 /
+# server.js PORT default) — host mapping is 8080:8080, not 8080:80.
+#
+# Before using: replace APP_NAME with your product name.
+# Required secrets: AWS_ACCESS_KEY, AWS_SECRET_KEY, VPS_HOST, VPS_SSH_KEY,
+#   VITE_API_BASE_URL, VITE_APP_DOMAIN, VITE_APP_SECURE_PROTOCOL
+
+name: Deploy Frontend DEV
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [deployment-dev]
+  workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: "Git SHA to roll back to (previously built & pushed image tag). Skips build/push."
+        required: false
+        type: string
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: APP_NAME-web   # ← replace APP_NAME
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.rollback_sha || github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve deploy SHA
+        id: sha
+        run: |
+          if [ -n "${{ github.event.inputs.rollback_sha }}" ]; then
+            echo "value=${{ github.event.inputs.rollback_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        if: github.event.inputs.rollback_sha == ''
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Login to ECR (rollback path)
+        id: login-ecr-rollback
+        if: github.event.inputs.rollback_sha != ''
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        if: github.event.inputs.rollback_sha == ''
+        run: |
+          docker build -f frontend/dockerfile \
+            --build-arg VITE_API_BASE_URL="${{ secrets.VITE_API_BASE_URL }}" \
+            --build-arg VITE_APP_DOMAIN="${{ secrets.VITE_APP_DOMAIN }}" \
+            --build-arg VITE_APP_SECURE_PROTOCOL="${{ secrets.VITE_APP_SECURE_PROTOCOL }}" \
+            -t $ECR_REPOSITORY ./frontend
+
+      - name: Tag image (SHA + dev)
+        if: github.event.inputs.rollback_sha == ''
+        run: |
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          docker tag $ECR_REPOSITORY:latest $REGISTRY/$ECR_REPOSITORY:${{ steps.sha.outputs.value }}
+          docker tag $ECR_REPOSITORY:latest $REGISTRY/$ECR_REPOSITORY:dev
+
+      - name: Push image
+        if: github.event.inputs.rollback_sha == ''
+        run: |
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          docker push $REGISTRY/$ECR_REPOSITORY:${{ steps.sha.outputs.value }}
+          docker push $REGISTRY/$ECR_REPOSITORY:dev
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry || steps.login-ecr-rollback.outputs.registry }}
+          DEPLOY_SHA: ${{ steps.sha.outputs.value }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ubuntu
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: ECR_REPOSITORY,REGISTRY,DEPLOY_SHA
+          script: |
+            set -e
+
+            IMAGE=$REGISTRY/$ECR_REPOSITORY:$DEPLOY_SHA
+            APP=APP_NAME-web   # ← replace APP_NAME
+
+            echo "Login to ECR"
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+            | docker login --username AWS \
+            --password-stdin $REGISTRY
+
+            echo "Pull image $IMAGE"
+            docker pull $IMAGE
+
+            echo "Start staged container on temp port 4000"
+            docker rm -f ${APP}-new || true
+            docker run -d \
+              --name ${APP}-new \
+              --restart always \
+              -p 4000:8080 \
+              $IMAGE
+
+            echo "Waiting for app startup..."
+            sleep 10
+
+            SUCCESS=0
+            for i in $(seq 1 24); do
+              if curl --retry 3 --retry-delay 2 -fs http://localhost:4000/health; then
+                SUCCESS=$((SUCCESS+1))
+              else
+                SUCCESS=0
+              fi
+              if [ "$SUCCESS" -ge 3 ]; then
+                echo "Staged container is stable."
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$SUCCESS" -ge 3 ]; then
+              echo "Switching traffic..."
+              docker stop ${APP} || true
+              docker rm   ${APP} || true
+
+              docker run -d \
+                --name ${APP} \
+                --restart always \
+                -p 8080:8080 \
+                $IMAGE
+
+              docker rm -f ${APP}-new || true
+              echo "Deployed $DEPLOY_SHA successfully"
+            else
+              echo "Health check failed. Rolling back..."
+              docker logs ${APP}-new || true
+              docker rm -f ${APP}-new || true
+              echo "Old container kept alive."
+              exit 1
+            fi

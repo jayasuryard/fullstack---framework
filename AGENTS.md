@@ -19,6 +19,16 @@ A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstra
 ├── SOURCE-MAPPING.md        # Every file: what it does, status, what to customize
 ├── .claude/
 │   └── CLAUDE.md            # Claude Code session context
+├── .github/workflows/
+│   ├── ci.yml                       # Backend tests + frontend lint/typecheck/build/test
+│   ├── deploy-backend-dev.yml       # DEV: gated on CI (workflow_run) → ECR → EC2 blue-green + migration step
+│   ├── deploy-backend-prod.yml      # PROD: gated on CI for v* tags → ECR → EC2 blue-green + migration step
+│   ├── deploy-frontend-dev.yml      # DEV: gated on CI → ECR → EC2 blue-green (8080:8080)
+│   └── deploy-frontend-prod.yml     # PROD: gated on CI for v* tags → ECR → EC2 blue-green (8080:8080)
+│                                    # GitHub only discovers workflows at the repo-root .github/workflows/,
+│                                    # so these must live here, not under backend/ or frontend/.
+│                                    # Each supports workflow_dispatch with a `rollback_sha` input to
+│                                    # redeploy a previously-built, SHA-tagged image without rebuilding.
 │
 ├── backend/
 │   ├── server.js            # Express entry point + HTTP server (WS, crons wire here)
@@ -26,13 +36,10 @@ A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstra
 │   ├── ecosystem.config.js  # PM2: cluster (api) + fork (worker)
 │   ├── start.sh             # Container entrypoint: migrate → worker → server
 │   ├── prisma.config.ts     # Prisma 7 config
-│   ├── dockerfile           # node:22-slim, prisma generate, start.sh CMD
+│   ├── dockerfile           # node:22-slim, npm ci --omit=dev, prisma generate, non-root appuser, start.sh CMD
 │   ├── docker-compose.yml   # Single-service compose (external DB/Redis)
-│   ├── .dockerignore
+│   ├── .dockerignore        # Excludes node_modules, .env*, keeps package-lock.json for `npm ci`
 │   ├── DOCKER.md            # Deployment setup guide
-│   ├── .github/workflows/
-│   │   ├── deploy.yml       # DEV: push deployment-dev → ECR → EC2 blue-green
-│   │   └── deploy-prod.yml  # PROD: push v* tag → ECR → EC2 blue-green
 │   │
 │   ├── config/
 │   │   ├── dbConnect.js     # PrismaClient with @prisma/adapter-pg (pg.Pool)
@@ -90,11 +97,9 @@ A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstra
 └── frontend/
     ├── server.js            # Express SPA server with OG meta injection
     ├── nginx.conf           # Alternative: plain nginx static host
-    ├── dockerfile           # Multi-stage: builder (Vite) → prod (Express)
+    ├── dockerfile           # Multi-stage: builder (Vite, VITE_* build args) → prod (Express, non-root `node` user, port 8080)
     ├── docker-compose.yml
-    ├── .github/workflows/
-    │   ├── deploy.yml
-    │   └── deploy-prod.yml
+    ├── .dockerignore        # Excludes node_modules, dist, .env*, keeps package-lock.json for `npm ci`
     ├── vite.config.js       # plugins: [react(), tailwindcss()]
     ├── eslint.config.js     # ESLint 9 flat config
     ├── index.html           # SPA shell with OG placeholders

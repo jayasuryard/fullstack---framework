@@ -25,12 +25,12 @@ Every file in this repo, what it does, and what you need to customize per produc
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `backend/dockerfile` | ⚙️ | node:22-slim, prisma generate, start.sh CMD | Add Chromium deps if product needs headless Chrome/PDF |
+| `backend/dockerfile` | ⚙️ | node:22-slim, `npm ci --omit=dev`, pinned `prisma generate`, non-root `appuser`, start.sh CMD | Add Chromium deps if product needs headless Chrome/PDF |
 | `backend/docker-compose.yml` | ⚙️ | Single-service compose (external DB + Redis) | Replace `APP_NAME`; update env file path |
-| `backend/.dockerignore` | ✅ | Excludes node_modules, IDE files, CI config | No changes needed |
+| `backend/.dockerignore` | ✅ | Excludes node_modules, IDE files, CI config, `.env*` (keeps `.env.example`); package-lock.json is NOT excluded (`npm ci` needs it) | No changes needed |
 | `backend/DOCKER.md` | ✅ | Setup guide, scripts, secrets table, troubleshooting | No changes needed |
-| `backend/.github/workflows/deploy.yml` | ⚙️ | DEV blue-green: push to `deployment-dev` → ECR → EC2 | Replace `APP_NAME` in the env var and remote script |
-| `backend/.github/workflows/deploy-prod.yml` | ⚙️ | PROD blue-green: push `v*` tag → ECR → EC2 | Same `APP_NAME` replacements; add seed exec calls |
+| `.github/workflows/deploy-backend-dev.yml` | ⚙️ | DEV blue-green: CI-gated (`workflow_run`) on `deployment-dev` → ECR (SHA + `dev` tags) → EC2, explicit migration step before traffic switch, `rollback_sha` input | Replace `APP_NAME` in the env var and remote script |
+| `.github/workflows/deploy-backend-prod.yml` | ⚙️ | PROD blue-green: CI-gated on `v*` tags → ECR (SHA + `latest` tags) → EC2, explicit migration step before traffic switch, `rollback_sha` input | Same `APP_NAME` replacements; add seed exec calls |
 | `backend/prisma.config.ts` | ✅ | Prisma 7 config (schema path, migrations path, DB URL) | No changes needed |
 
 ### Config / Infrastructure
@@ -109,16 +109,17 @@ Every file in this repo, what it does, and what you need to customize per produc
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `frontend/dockerfile` | ✅ | Multi-stage: Vite build → Express server | No changes needed |
-| `frontend/docker-compose.yml` | ⚙️ | Single frontend service on 8080:80 | Replace `APP_NAME` |
+| `frontend/dockerfile` | ✅ | Multi-stage: Vite build (VITE_* passed as build ARGs, not a copied `.env`) → Express server, non-root `node` user, listens on 8080 | No changes needed |
+| `frontend/docker-compose.yml` | ⚙️ | Single frontend service on 8080:8080 (container listens on 8080, not 80) | Replace `APP_NAME` |
+| `frontend/.dockerignore` | ✅ | Excludes node_modules, dist, IDE files, `.env*` (keeps `.env.example`); package-lock.json is NOT excluded (`npm ci` needs it) | No changes needed |
 | `frontend/nginx.conf` | ✅ | Alternative: plain nginx SPA static host (no OG injection) | Use instead of `server.js` if subdomain branding isn't needed |
 | `frontend/server.js` | ⚙️ | Express SPA server with per-subdomain OG meta injection | Set `APP_NAME`, `APP_DESCRIPTION`, `BRANDING_API_PATH` env vars |
-| `frontend/.github/workflows/deploy.yml` | ⚙️ | DEV: env file → Docker build → ECR → EC2 | Replace `APP_NAME` |
-| `frontend/.github/workflows/deploy-prod.yml` | ⚙️ | PROD: same on `v*` tag | Replace `APP_NAME` |
+| `.github/workflows/deploy-frontend-dev.yml` | ⚙️ | DEV: CI-gated (`workflow_run`) → Docker build (VITE_* build-args) → ECR (SHA + `dev` tags) → EC2 blue-green on 8080:8080, `rollback_sha` input | Replace `APP_NAME`; set `VITE_*` secrets |
+| `.github/workflows/deploy-frontend-prod.yml` | ⚙️ | PROD: CI-gated on `v*` tags → same blue-green flow, ECR SHA + `latest` tags | Replace `APP_NAME`; set `VITE_*` secrets |
 | `frontend/vite.config.js` | ✅ | `plugins: [react(), tailwindcss()]` | No changes needed |
 | `frontend/eslint.config.js` | ✅ | ESLint 9 flat config | Add product-specific rules if needed |
 | `frontend/index.html` | ⚙️ | SPA shell with `__OG_TITLE__` / `__OG_DESCRIPTION__` / `__OG_IMAGE__` placeholders | Update `<title>` default; add product favicon |
-| `frontend/.env.example` | ⚙️ | `VITE_API_BASE_URL`, `VITE_APP_DOMAIN` | Fill in per environment |
+| `frontend/.env.example` | ⚙️ | `VITE_API_BASE_URL`, `VITE_APP_DOMAIN` | Fill in per environment; local `docker build` runs can pass matching `--build-arg` values |
 
 ### Core React
 

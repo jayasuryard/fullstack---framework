@@ -1,5 +1,8 @@
 FROM node:22-slim
 
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+
 # Minimal system deps: openssl for Prisma TLS, curl for healthcheck
 RUN apt-get update && apt-get install -y \
     openssl \
@@ -12,11 +15,17 @@ RUN apt-get update && apt-get install -y \
 # libcups2 libdbus-1-3 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1
 # libxfixes3 libxrandr2 libpango-1.0-0 libcairo2
 
+# Non-root runtime user (Debian base — Alpine's addgroup/adduser flags don't apply here)
+RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser
+
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --omit=dev
+# npm ci (not npm install) — deterministic, requires package-lock.json in the
+# build context (see .dockerignore). `prisma` is now a regular dependency so
+# the CLI is present here and start.sh never fetches it from the registry.
+RUN npm ci --omit=dev
 
 COPY prisma ./prisma
 COPY prisma.config.ts ./
@@ -26,11 +35,13 @@ COPY . .
 # Placeholder so prisma generate works at build time without a real DB
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db"
 
-# Pin the exact prisma CLI version (matches package-lock) — npm install --omit=dev
-# excludes it, so npx would otherwise fetch an unpinned latest from the registry.
-RUN npx --yes prisma@7.9.1 generate
+# Uses the locally installed CLI (pinned in package.json/package-lock.json) —
+# no network fetch of an unpinned version.
+RUN npx prisma generate
 
-RUN chmod +x start.sh
+RUN chmod +x start.sh && chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 3000
 
