@@ -60,9 +60,9 @@ app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
 
 // ── Middleware ─────────────────────────────────────────────────────────────────
 // CORS locked to FRONTEND_URL (comma-separated list supported). Dev default:
-// localhost:5173 (Vite). Adjust in .env per environment.
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
-  .split(',').map(s => s.trim()).filter(Boolean);
+// localhost:5173 (Vite). Adjust in .env per environment. Shared with the WS
+// hub's Origin check (helpers/ws/hub.js) via config/corsConfig.js.
+const { allowedOrigins } = require('./config/corsConfig');
 app.use(cors({ origin: allowedOrigins }));
 
 // Security headers: CSP, X-Frame-Options, nosniff, HSTS (behind TLS).
@@ -136,15 +136,17 @@ startPurgeCron();
 // ── WebSocket hub (shared) ─────────────────────────────────────────────────────
 // attachWsHub: generic /ws?token=...&channels=a,b for any realtime feature.
 // attachJobWsServer: /ws/jobs/:jobId — live job progress (thin shim over the hub).
-// Both share one http.Server; unclaimed upgrade requests are destroyed below.
+// Both register themselves (noServer WebSocketServer instances) against the
+// SAME http.Server; hub.js installs exactly one 'upgrade' listener per server
+// that dispatches by path to whichever hub matches, destroying the socket only
+// for genuinely unmatched paths. Do NOT add another 'upgrade' listener here —
+// a second listener would race the hub's handleUpgrade() and destroy sockets
+// the hub already accepted.
 const { attachWsHub }            = require('./helpers/ws/hub');
 const { attachJobWsServer }      = require('./helpers/queue/jobWsServer');
 
 attachWsHub(server);
 attachJobWsServer(server);
-
-// Fallback: destroy any unclaimed upgrade request
-server.on('upgrade', (req, socket) => { if (!socket.destroyed) socket.destroy(); });
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 // Wait for the Redis connection so the first request never hits a rate-limiter /
