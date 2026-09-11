@@ -46,12 +46,18 @@ function response(key, data = {}) {
  */
 function send(res, key, data = {}) {
   const status = HTTP_STATUS[key] || 200;
-  // Local BigInt → Number serializer. DO NOT touch BigInt.prototype (global
-  // mutation breaks third-party JSON output — e.g. drivers that return BigInts
-  // for counts get silently coerced even outside the API envelope).
+  // Local BigInt → String serializer. JS Number is only safe up to 2^53-1
+  // (Number.MAX_SAFE_INTEGER); a Prisma BigInt (e.g. a money amount stored in
+  // minor units, or a large row count) above that boundary would silently lose
+  // precision if coerced with Number(value). JSON has no native arbitrary-precision
+  // numeric type, so we serialize as a string — the standard safe pattern — instead
+  // of a lossy Number. DO NOT touch BigInt.prototype (global mutation breaks
+  // third-party JSON output — e.g. drivers that return BigInts for counts get
+  // silently coerced even outside the API envelope). Any future money field
+  // should use Decimal / integer-minor-units, never Float, for the same reason.
   return res.status(status).json(JSON.parse(JSON.stringify(
     response(key, data),
-    (_, value) => typeof value === 'bigint' ? Number(value) : value
+    (_, value) => typeof value === 'bigint' ? value.toString() : value
   )));
 }
 

@@ -39,12 +39,13 @@ const resetSchema   = z.object({
   otp:          z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'),
   newPassword:  z.string().min(8).max(200),
 });
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 router.post('/login',            loginLimiter,  validateBody(loginSchema),   login);
 router.post('/refresh',          refreshLimiter, validateBody(refreshSchema), refreshToken);
 router.get( '/me',               verifyToken,   me);
 router.post('/logout',           verifyToken,   logout);
-router.post('/profile/update',   verifyToken,   validatedUpload.single('photo'), updateProfile);
+router.post('/profile/update',   verifyToken,   validatedUpload.single('photo', PHOTO_TYPES), updateProfile);
 router.post('/forgot-password',  otpSendLimiter, validateBody(forgotSchema), forgotPassword);
 router.post('/reset-password',   otpSendLimiter, validateBody(resetSchema),  resetPassword);
 

@@ -20,3 +20,15 @@ test('default data is empty object', () => {
   const res = apiResponse.response('SUCCESS');
   assert.deepEqual(res.responseData.result, {});
 });
+
+test('send() serializes a BigInt above Number.MAX_SAFE_INTEGER as an exact string, not a rounded Number', () => {
+  const big = 9007199254740993n; // 2^53 + 1 — first integer a JS Number cannot represent exactly
+  let captured;
+  const res = {
+    status() { return this; },
+    json(body) { captured = body; return this; },
+  };
+  apiResponse.send(res, 'SUCCESS', { amount: big });
+  assert.equal(captured.responseData.result.amount, '9007199254740993');
+  assert.equal(typeof captured.responseData.result.amount, 'string');
+});
