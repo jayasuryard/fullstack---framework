@@ -178,7 +178,7 @@ These are architectural choices the framework intentionally leaves to the produc
 | # | Decision | Recommendation |
 |---|----------|---------------|
 | 1 | **Rate limit store in PM2 cluster** | ✅ Done — HybridStore: Redis-backed (`rate-limit-redis`, per-limiter prefixes `rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:`), in-memory sliding-window fallback if Redis down. |
-| 2 | **Input validation library** | Currently manual inline checks in services. Add Zod at route level for schema validation if desired. |
+| 2 | **Input validation library** | ✅ Done — Zod is wired (`middleware/validate.js`, `validateBody(schema)` → 400 + `VALIDATION_ERROR` envelope on failure) and used at route level in `modules/auth/routes/authRoutes.js`. Add `validateBody(z.object({...}))` to new routes rather than inline checks. |
 | 3 | **Centralized error handler** | ✅ Done — global error middleware in `server.js`: JSON 404, multer errors → 400, `SERVER_ERROR` fallback. Add per-domain error mappers here. |
 | 4 | **Prisma Accelerate** | Not active. Enable by calling `prisma.$extends(withAccelerate())` in `config/dbConnect.js`. |
 | 5 | **Cloudinary vs S3 routing** | Both configured. Decide per asset type: S3 for docs/exports, Cloudinary for images/media. Encode in a `helpers/storage.js`. |

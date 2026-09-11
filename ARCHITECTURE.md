@@ -159,7 +159,7 @@ Every backend response uses this shape:
 
 Response codes live in `globals/response.json`. The frontend `api.js` client unwraps this automatically — your page components receive `responseData.result` directly (or an `ApiError` is thrown).
 
-**HTTP status** is almost always 200. The `responseCode` field carries semantic status. Exceptions: 503 for maintenance mode, 400 for malformed webhook payloads.
+**HTTP status** reflects the real semantic status, not a flat 200: `helpers/apiResponse.js`'s `send(res, key, data)` maps each `response.json` key to a real code via its `HTTP_STATUS` table (200/201/202, 400/401/403/404/409/429, 500/503) and calls `res.status(status).json(...)` itself. `response(key, data)` alone only builds the envelope object — it does not touch `res`, so callers that use it directly (e.g. `apiResponse.response('SUCCESS', data)` passed to `res.json(...)`) get whatever status Express defaults to (200). Prefer `send()` for anything that isn't a plain 200.
 
 ---
 
@@ -218,10 +218,10 @@ async function list(req, res) {
       prisma.model.findMany({ skip, take, where }),
       prisma.model.count({ where }),
     ])
-    res.json(apiResponse.send(res, 'SUCCESS', { rows, pagination: meta(total) }))
+    return apiResponse.send(res, 'SUCCESS', { rows, pagination: meta(total) })
   } catch (error) {
     console.error('[ModuleService.list]', error)
-    apiResponse.send(res, 'SERVER_ERROR') // HTTP 500 + envelope code 1005
+    return apiResponse.send(res, 'SERVER_ERROR') // HTTP 500 + envelope code 1005
   }
 }
 ```
@@ -255,7 +255,7 @@ import { FeaturePage } from './pages/feature/FeaturePage'
 1. **Copy** `workers/_stub.js` → `workers/<domain><Action>JobHandler.js`
 2. **Implement** your handler function
 3. **Register** in `worker.js`: add `'<queue>:<action>': handle<Feature>` to the `handlers` map
-4. **Enqueue** from any service: `await enqueueJob('<queue>:<action>', { ...payload })`
+4. **Enqueue** from any service, passing `meta.userId` — `jobWsServer.js` refuses to expose a job over WS unless `job.meta.userId` matches the requesting token, so a job enqueued without it can never be tracked by the browser: `const { jobId } = await enqueueJob('<queue>:<action>', { ...payload }, { userId: req.user.id })`
 5. **Optionally stream progress** to the browser — attach `attachJobWsServer(server)` in `server.js` using `helpers/queue/jobWsServer.js`
 
 ---

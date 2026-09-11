@@ -6,7 +6,7 @@ Read this file completely before writing any code in this repo.
 
 ## What This Repo Is
 
-A **production-grade SaaS scaffold** built on a proven stack. Use it to bootstrap new SaaS products (CRM, ERP, LMS, HRMS, Marketplace, etc.) without starting from zero. The auth system, background jobs, deployment pipeline, and common infrastructure are production-ready.
+A **SaaS scaffold** built on a proven stack. Use it to bootstrap new SaaS products (CRM, ERP, LMS, HRMS, Marketplace, etc.) without starting from zero. The auth system (login/refresh-rotation/lockout/OTP-reset, integration-tested against real Postgres + Redis — `backend/tests/auth.integration.test.js`), rate limiting, and structured logging are hardened and ready to use as-is. Background jobs (Redis-backed queue + WS progress, ownership-checked) and the WS hub are implemented but do not yet have dedicated integration test coverage in this repo. The Docker/GitHub Actions deployment pipeline is template-complete — replace `APP_NAME` and secrets per the checklist in `.claude/CLAUDE.md` before first deploy. Multi-tenancy and billing are **not** implemented — add them as product-specific modules.
 
 ---
 
@@ -169,8 +169,10 @@ The frontend `api.js` unwraps automatically — pages receive `result` directly.
 # 1. Scaffold backend module
 npm run gen:module invoice
 
-# 2. Add Prisma model
-npm run gen:model Invoice id:cuid name:String amount:Float createdAt:DateTime
+# 2. Add Prisma model — id (String @id @default(cuid())), createdAt, updatedAt
+#    are appended automatically; don't pass them. Valid types: String, Int,
+#    Float, Boolean, DateTime, Json, Decimal, BigInt, Bytes (+ `?`/`[]`/`@...`).
+npm run gen:model Invoice name:String amount:Float
 
 # 3. Run migration
 npm run gen:migration add_invoice
