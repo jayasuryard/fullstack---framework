@@ -1,10 +1,20 @@
 /**
  * Generic Redis-backed job queue with WebSocket progress streaming.
  *
- * Pattern: enqueueJob → worker BLPOP → handler(payload, { jobId, reportProgress }) → done/failed
+ * Pattern: enqueueJob → worker BLMOVE (atomic claim) → handler(payload, { jobId, reportProgress }) → done/failed
  * Progress events are forwarded to the shared WS hub (helpers/ws/hub.js) on
  * channel job:<jobId>, so browsers subscribed via /ws/jobs/:jobId get live
  * updates (see jobWsServer.js).
+ *
+ * Reliability model (see F07):
+ *  - Popping a job and marking it "in flight" is a single atomic Redis op
+ *    (BLMOVE from the queue list into a per-queue processing list), so a
+ *    worker crash can never leave a job in neither the queue nor processing.
+ *  - Each claimed job gets a lease (workerId + expiry) in a global ZSET,
+ *    renewed by a heartbeat every HEARTBEAT_MS while the handler runs.
+ *  - A periodic sweep requeues only jobs whose lease has actually expired —
+ *    a long-running job with a live heartbeat is never touched, regardless
+ *    of total elapsed time.
  */
 
 const { client } = require('../../config/redisConfig');
@@ -12,16 +22,23 @@ const { emitToChannel } = require('../ws/hub');
 const { v4: uuidv4 } = require('uuid');
 
 const QUEUE_PREFIX            = 'job:queue:';
+const PROCESSING_LIST_PREFIX  = 'job:processing:list:'; // per-queue "claimed, not yet finished" list (BLMOVE destination)
+const PROCESSING_ZSET         = 'job:processing:leases'; // global lease index — member: jobId, score: lease expiry (ms epoch)
 const STATUS_PREFIX           = 'job:status:';
-const JOB_TTL_SECONDS         = 60 * 60;  // 1 hour
-const BLPOP_TIMEOUT           = 5;
-const MAX_RETRIES             = 3;        // handler failures before job is marked failed
-const STUCK_AFTER_MS          = 5 * 60 * 1000;  // processing longer than this + no heartbeats → re-queued
 
-async function enqueueJob(queueName, payload, meta = {}) {
+const BLPOP_TIMEOUT           = 5;
+const MAX_ATTEMPTS            = 3;              // total handler executions before a job is marked failed
+const LEASE_MS                = 60 * 1000;      // how long a claim is valid without a heartbeat
+const HEARTBEAT_MS            = 20 * 1000;      // lease renewal interval — well under LEASE_MS
+const RECOVERY_INTERVAL_MS    = 30 * 1000;      // periodic sweep for expired leases, after the startup sweep
+const PROCESSING_TTL_SECONDS  = 2 * 60 * 60;    // safety-net TTL on the status hash while actively processing, refreshed by heartbeat
+const TERMINAL_TTL_SECONDS    = 24 * 60 * 60;   // retention for completed/failed job status (matches the framework's other 24h-class windows)
+
+async function enqueueJob(queueName, payload, meta = {}, opts = {}) {
   const jobId     = uuidv4();
   const queueKey  = `${QUEUE_PREFIX}${queueName}`;
   const statusKey = `${STATUS_PREFIX}${jobId}`;
+  const { idempotencyKey = null } = opts;
 
   await client.hSet(statusKey, {
     jobId,
@@ -32,8 +49,11 @@ async function enqueueJob(queueName, payload, meta = {}) {
     createdAt: new Date().toISOString(),
     meta:      JSON.stringify(meta),
     payload:   JSON.stringify(payload),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
   });
-  await client.expire(statusKey, JOB_TTL_SECONDS);
+  // Deliberately no TTL here — a job must not lose its payload while it's still
+  // sitting in the backlog, only a worker actually starting/finishing it should
+  // touch the status hash's expiry (see _claimJob / terminal-state updates below).
   await client.rPush(queueKey, jobId);
 
   console.log(`[Queue] Enqueued job ${jobId} → ${queueName}`);
@@ -56,13 +76,21 @@ async function getJobStatus(jobId) {
     meta:            data.meta   ? JSON.parse(data.meta)   : {},
     result:          data.result ? JSON.parse(data.result) : undefined,
     error:           data.error  || undefined,
+    idempotencyKey:  data.idempotencyKey || null,
   };
 }
 
-async function _updateJob(jobId, fields) {
+/**
+ * @param {string|null} ttl  null = leave expiry untouched, 'persist' = strip any
+ *                           TTL (job went back to pending), or a number of seconds
+ *                           to (re)apply — used for the processing safety-net TTL
+ *                           and the terminal-state retention window.
+ */
+async function _updateJob(jobId, fields, ttl = null) {
   const statusKey = `${STATUS_PREFIX}${jobId}`;
   await client.hSet(statusKey, fields);
-  await client.expire(statusKey, JOB_TTL_SECONDS);
+  if (ttl === 'persist') await client.persist(statusKey);
+  else if (typeof ttl === 'number') await client.expire(statusKey, ttl);
 }
 
 /**
@@ -76,46 +104,234 @@ async function reportProgress(jobId, percent, message = '', extra = {}) {
   for (const [k, v] of Object.entries(extra)) {
     hashFields[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
   }
-  await _updateJob(jobId, hashFields);
+  await _updateJob(jobId, hashFields, PROCESSING_TTL_SECONDS);
 
   await emitToChannel(`job:${jobId}`, { jobId, status: 'processing', progress: percent, progressMessage: message, ...extra });
 }
 
 /**
- * Re-queue jobs left in "processing" by a crashed worker (no visibility timeout
- * in the BLPOP model — recovery happens on worker start). A job older than
- * STUCK_AFTER_MS that never finished is reset to pending and pushed back.
+ * Atomically record that `workerId` owns `jobId` until `leaseExpiresAt`.
+ * The job already left the queue via BLMOVE before this runs, so a failure
+ * here does not lose the job — the caller puts it back on the queue instead.
+ */
+async function _claimJob(jobId, workerId) {
+  const statusKey = `${STATUS_PREFIX}${jobId}`;
+  const leaseExpiresAt = Date.now() + LEASE_MS;
+
+  const multi = client.multi();
+  multi.hSet(statusKey, {
+    status:         'processing',
+    startedAt:      new Date().toISOString(),
+    progress:       '0',
+    workerId,
+    leaseExpiresAt: String(leaseExpiresAt),
+  });
+  multi.persist(statusKey);
+  multi.zAdd(PROCESSING_ZSET, { score: leaseExpiresAt, value: jobId });
+  await multi.exec();
+
+  return leaseExpiresAt;
+}
+
+async function _renewLease(jobId) {
+  const statusKey = `${STATUS_PREFIX}${jobId}`;
+  const leaseExpiresAt = Date.now() + LEASE_MS;
+
+  const multi = client.multi();
+  multi.zAdd(PROCESSING_ZSET, { score: leaseExpiresAt, value: jobId });
+  multi.hSet(statusKey, { leaseExpiresAt: String(leaseExpiresAt) });
+  multi.expire(statusKey, PROCESSING_TTL_SECONDS);
+  await multi.exec();
+}
+
+/**
+ * Move a job that's no longer legitimately "in processing" back onto its
+ * queue. Used both by the lease sweep (expired lease) and the orphaned-claim
+ * sweep (BLMOVE succeeded but the claim write never completed).
+ */
+async function _requeueOrphan(jobId, fallbackQueueName) {
+  const statusKey = `${STATUS_PREFIX}${jobId}`;
+  const data = await client.hGetAll(statusKey);
+  const queueName = (data && data.queueName) || fallbackQueueName;
+  if (!queueName) return false;
+
+  if (data && data.jobId && data.status !== 'processing' && data.status !== 'pending') {
+    return false; // already reached done/failed through the normal path — nothing to recover
+  }
+
+  await client.lRem(`${PROCESSING_LIST_PREFIX}${queueName}`, 0, jobId);
+  if (data && data.jobId) {
+    await client.hSet(statusKey, { status: 'pending', progress: '0', startedAt: '', workerId: '', leaseExpiresAt: '' });
+    await client.persist(statusKey);
+  }
+  await client.rPush(`${QUEUE_PREFIX}${queueName}`, jobId);
+  console.warn(`[Worker] Recovered job ${jobId} (queue: ${queueName})`);
+  return true;
+}
+
+/**
+ * Sweep for jobs that are no longer legitimately in flight:
+ *  1. Leases past their expiry with no heartbeat — the owning worker crashed
+ *     or hung. `zRem` is atomic, so when multiple worker processes sweep
+ *     concurrently, only the one that actually removes a given member acts
+ *     on it — no double-requeue race.
+ *  2. Jobs sitting in a processing list with no lease at all — the worker
+ *     died in the (very small) window between the atomic BLMOVE claim and
+ *     the lease write completing.
+ * A job with a live, renewed lease is never touched, however long it runs.
  */
 async function recoverStuckJobs() {
-  let cursor = '0';
   let recovered = 0;
 
+  const expired = await client.zRangeByScore(PROCESSING_ZSET, 0, Date.now());
+  for (const jobId of expired) {
+    const removed = await client.zRem(PROCESSING_ZSET, jobId);
+    if (!removed) continue;
+    try {
+      if (await _requeueOrphan(jobId)) recovered += 1;
+    } catch (err) {
+      console.error(`[Worker] Lease-expiry recovery failed for ${jobId}:`, err.message);
+    }
+  }
+
+  let cursor = '0';
   do {
-    const { cursor: nextCursor, keys } = await client.scan(cursor, {
-      MATCH: `${STATUS_PREFIX}*`,
-      COUNT: 200,
-    });
+    const { cursor: nextCursor, keys } = await client.scan(cursor, { MATCH: `${PROCESSING_LIST_PREFIX}*`, COUNT: 100 });
     cursor = nextCursor;
 
-    for (const key of keys) {
-      try {
-        const data = await client.hGetAll(key);
-        if (data.status !== 'processing' || !data.startedAt) continue;
+    for (const listKey of keys) {
+      const queueName = listKey.slice(PROCESSING_LIST_PREFIX.length);
+      const jobIds = await client.lRange(listKey, 0, -1);
 
-        const startedAt = new Date(data.startedAt).getTime();
-        if (!Number.isFinite(startedAt) || Date.now() - startedAt < STUCK_AFTER_MS) continue;
+      for (const jobId of jobIds) {
+        try {
+          const score = await client.zScore(PROCESSING_ZSET, jobId);
+          if (score !== null) continue; // has a lease — handled by the pass above (or still legitimately fresh)
 
-        await client.hSet(key, { status: 'pending', progress: '0', startedAt: '' });
-        await client.rPush(`${QUEUE_PREFIX}${data.queueName}`, data.jobId);
-        recovered += 1;
-      } catch (err) {
-        console.error(`[Worker] Stuck-job recovery failed for ${key}:`, err.message);
+          const removedCount = await client.lRem(listKey, 1, jobId);
+          if (!removedCount) continue;
+          if (await _requeueOrphan(jobId, queueName)) recovered += 1;
+        } catch (err) {
+          console.error(`[Worker] Orphaned-claim recovery failed for ${jobId}:`, err.message);
+        }
       }
     }
   } while (cursor !== '0');
 
   if (recovered) console.log(`[Worker] Recovered ${recovered} stuck job(s).`);
   return recovered;
+}
+
+async function _runQueueLoop(queueName, handler, workerId, exitOnError) {
+  const { createClient } = require('redis');
+  const blockingClient = createClient({
+    url:      `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
+    password: process.env.REDIS_PASSWORD || undefined,
+    database: process.env.REDIS_DB ? Number(process.env.REDIS_DB) : 0,
+  });
+  blockingClient.on('error', err => console.error(`[Worker:${queueName}] Redis error:`, err.message));
+  await blockingClient.connect();
+
+  const queueKey      = `${QUEUE_PREFIX}${queueName}`;
+  const processingKey = `${PROCESSING_LIST_PREFIX}${queueName}`;
+
+  console.log(`[Worker] Listening on: ${queueName}`);
+
+  while (true) {
+    let jobId;
+    try {
+      // BLMOVE atomically pops from the queue and pushes into the processing
+      // list in one Redis-side step — there is no instant where a popped job
+      // exists in neither list, unlike the old BLPOP-then-mark approach.
+      jobId = await blockingClient.blMove(queueKey, processingKey, 'LEFT', 'RIGHT', BLPOP_TIMEOUT);
+    } catch (err) {
+      console.error(`[Worker:${queueName}] BLMOVE error:`, err.message);
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
+    if (!jobId) continue;
+
+    try {
+      await _processClaimedJob(jobId, queueName, queueKey, processingKey, handler, workerId, exitOnError);
+    } catch (err) {
+      console.error(`[Worker:${queueName}] Unhandled error processing ${jobId}:`, err.message);
+    }
+  }
+}
+
+async function _processClaimedJob(jobId, queueName, queueKey, processingKey, handler, workerId, exitOnError) {
+  const statusKey = `${STATUS_PREFIX}${jobId}`;
+
+  try {
+    await _claimJob(jobId, workerId);
+  } catch (claimErr) {
+    // The job already left the queue atomically (BLMOVE); if the follow-up
+    // lease write fails, put it straight back rather than leave it stranded.
+    console.error(`[Worker:${queueName}] Claim failed for ${jobId}, returning to queue:`, claimErr.message);
+    try {
+      await client.lRem(processingKey, 0, jobId);
+      await client.rPush(queueKey, jobId);
+    } catch (restoreErr) {
+      console.error(`[Worker:${queueName}] Failed to restore ${jobId} to queue:`, restoreErr.message);
+    }
+    return;
+  }
+
+  const rawData = await client.hGetAll(statusKey);
+  if (!rawData || !rawData.payload) {
+    console.warn(`[Worker:${queueName}] No payload for job ${jobId}, dropping.`);
+    await client.lRem(processingKey, 0, jobId);
+    await client.zRem(PROCESSING_ZSET, jobId);
+    return;
+  }
+
+  await emitToChannel(`job:${jobId}`, { jobId, status: 'processing', progress: 0, progressMessage: 'Starting…' });
+  console.log(`[Worker] Processing job ${jobId} (${queueName})`);
+
+  const heartbeat = setInterval(() => {
+    _renewLease(jobId).catch(err => console.error(`[Worker] Heartbeat failed for ${jobId}:`, err.message));
+  }, HEARTBEAT_MS);
+
+  try {
+    const attempts = (parseInt(rawData.attempts, 10) || 0) + 1;
+
+    try {
+      const payload = JSON.parse(rawData.payload);
+      const result = await handler(payload, {
+        jobId,
+        idempotencyKey: rawData.idempotencyKey || null,
+        reportProgress: (pct, msg, extra) => reportProgress(jobId, pct, msg, extra),
+      });
+
+      await _updateJob(jobId, {
+        status: 'done', progress: '100', completedAt: new Date().toISOString(), result: JSON.stringify(result),
+      }, TERMINAL_TTL_SECONDS);
+      await emitToChannel(`job:${jobId}`, { jobId, status: 'done', progress: 100, progressMessage: 'Complete.', result });
+      console.log(`[Worker] Job ${jobId} done.`);
+    } catch (handlerErr) {
+      if (attempts < MAX_ATTEMPTS) {
+        // Re-queue for retry. Keep the last error on the hash for debugging.
+        await _updateJob(jobId, {
+          status: 'pending', progress: '0', attempts: String(attempts),
+          error: handlerErr.message || 'Unknown error', completedAt: '', startedAt: '', workerId: '', leaseExpiresAt: '',
+        }, 'persist');
+        await client.rPush(queueKey, jobId);
+        await emitToChannel(`job:${jobId}`, { jobId, status: 'retrying', attempts, error: handlerErr.message });
+        console.warn(`[Worker] Job ${jobId} failed (attempt ${attempts}/${MAX_ATTEMPTS}), re-queued:`, handlerErr.message);
+      } else {
+        await _updateJob(jobId, {
+          status: 'failed', completedAt: new Date().toISOString(), error: handlerErr.message || 'Unknown error',
+        }, TERMINAL_TTL_SECONDS);
+        await emitToChannel(`job:${jobId}`, { jobId, status: 'failed', progress: 0, error: handlerErr.message });
+        console.error(`[Worker] Job ${jobId} failed permanently after ${attempts} attempts:`, handlerErr.message);
+        if (exitOnError) process.exit(1);
+      }
+    }
+  } finally {
+    clearInterval(heartbeat);
+    await client.lRem(processingKey, 0, jobId).catch(() => {});
+    await client.zRem(PROCESSING_ZSET, jobId).catch(() => {});
+  }
 }
 
 /**
@@ -128,97 +344,32 @@ async function recoverStuckJobs() {
 function startWorker(handlers, opts = {}) {
   const { exitOnError = false } = opts;
   const queueNames = Object.keys(handlers);
-  const queueKeys  = queueNames.map(n => `${QUEUE_PREFIX}${n}`);
+  const workerId   = uuidv4();
 
-  if (!queueKeys.length) {
-    // No handlers registered (fresh scaffold). Idle-loop instead of crashing so
-    // the PM2 worker process stays alive and picks up handlers on next deploy.
+  if (!queueNames.length) {
+    // No handlers registered (fresh scaffold). Idle instead of crashing so the
+    // PM2 worker process stays alive and picks up handlers on next deploy.
     console.log('[Worker] No handlers registered — idle. Add handlers in worker.js to start consuming.');
   } else {
-    console.log(`[Worker] Starting. Listening on: ${queueNames.join(', ')}`);
+    console.log(`[Worker] Starting (id: ${workerId}). Queues: ${queueNames.join(', ')}`);
   }
 
-  const { createClient } = require('redis');
-  const workerClient = createClient({
-    url:      `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
-    password: process.env.REDIS_PASSWORD || undefined,
-    database: process.env.REDIS_DB ? Number(process.env.REDIS_DB) : 0,
-  });
-  workerClient.on('error', err => console.error('[Worker] Redis error:', err.message));
-
   (async () => {
-    await workerClient.connect();
-    console.log('[Worker] Redis connected.');
-
-    // Recover jobs orphaned by a previous crashed worker before consuming new ones.
+    // Recovery scans ALL queues' processing state globally, not just this
+    // process's own handlers — run it (and its periodic sweep) even while idle,
+    // so an idle/scaffold worker still helps reclaim jobs orphaned by others.
     try { await recoverStuckJobs(); } catch (err) {
-      console.error('[Worker] Stuck-job recovery failed:', err.message);
+      console.error('[Worker] Startup recovery failed:', err.message);
     }
 
-    while (true) {
-      try {
-        if (!queueKeys.length) {
-          // Idle mode — no queues to listen on. Re-check every 2s in case
-          // handlers were registered via a hot deploy.
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
-        }
+    const sweep = setInterval(() => {
+      recoverStuckJobs().catch(err => console.error('[Worker] Recovery sweep failed:', err.message));
+    }, RECOVERY_INTERVAL_MS);
+    sweep.unref?.();
 
-        const item = await workerClient.blPop(queueKeys, BLPOP_TIMEOUT);
-        if (!item) continue;
-
-        const { key: queueKey, element: jobId } = item;
-        const queueName = queueKey.replace(QUEUE_PREFIX, '');
-        const handler   = handlers[queueName];
-
-        if (!handler) {
-          console.warn(`[Worker] No handler for "${queueName}", skipping ${jobId}`);
-          continue;
-        }
-
-        const rawData = await client.hGetAll(`${STATUS_PREFIX}${jobId}`);
-        if (!rawData || !rawData.payload) {
-          console.warn(`[Worker] No payload for job ${jobId}, skipping.`);
-          continue;
-        }
-
-        await _updateJob(jobId, { status: 'processing', startedAt: new Date().toISOString(), progress: '0' });
-        await emitToChannel(`job:${jobId}`, { jobId, status: 'processing', progress: 0, progressMessage: 'Starting…' });
-
-        console.log(`[Worker] Processing job ${jobId} (${queueName})`);
-
-        try {
-          const result = await handler(JSON.parse(rawData.payload), {
-            jobId,
-            reportProgress: (pct, msg, extra) => reportProgress(jobId, pct, msg, extra),
-          });
-
-          await _updateJob(jobId, { status: 'done', progress: '100', completedAt: new Date().toISOString(), result: JSON.stringify(result) });
-          await emitToChannel(`job:${jobId}`, { jobId, status: 'done', progress: 100, progressMessage: 'Complete.', result });
-          console.log(`[Worker] Job ${jobId} done.`);
-        } catch (handlerErr) {
-          const attempts = (parseInt(rawData.attempts, 10) || 0) + 1;
-
-          if (attempts <= MAX_RETRIES) {
-            // Re-queue for retry. Keep the last error on the hash for debugging.
-            await _updateJob(jobId, {
-              status: 'pending', progress: '0', attempts: String(attempts),
-              error: handlerErr.message || 'Unknown error', completedAt: '', startedAt: '',
-            });
-            await client.rPush(queueKey, jobId);
-            await emitToChannel(`job:${jobId}`, { jobId, status: 'retrying', attempts, error: handlerErr.message });
-            console.warn(`[Worker] Job ${jobId} failed (attempt ${attempts}/${MAX_RETRIES}), re-queued:`, handlerErr.message);
-          } else {
-            await _updateJob(jobId, { status: 'failed', completedAt: new Date().toISOString(), error: handlerErr.message || 'Unknown error' });
-            await emitToChannel(`job:${jobId}`, { jobId, status: 'failed', progress: 0, error: handlerErr.message });
-            console.error(`[Worker] Job ${jobId} failed permanently after ${attempts} attempts:`, handlerErr.message);
-            if (exitOnError) process.exit(1);
-          }
-        }
-      } catch (loopErr) {
-        console.error('[Worker] Loop error:', loopErr.message);
-        await new Promise(r => setTimeout(r, 2000));
-      }
+    for (const queueName of queueNames) {
+      _runQueueLoop(queueName, handlers[queueName], workerId, exitOnError)
+        .catch(err => console.error(`[Worker:${queueName}] Queue loop crashed:`, err.message));
     }
   })();
 }
