@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext'
 // Define your product's navigation items here.
 // Shape: [{ label: string, path: string, icon: ReactNode, roles: string[] }]
 const NAV_ITEMS = [
-  // { label: 'Dashboard', path: '/dashboard', icon: null, roles: ['admin', 'superAdmin'] },
+  { label: 'Dashboard', path: '/dashboard', icon: null, roles: ['admin', 'superAdmin'] },
 ]
 
 export const MainLayout = () => {

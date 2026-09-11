@@ -13,19 +13,32 @@ export default function Input({
   disabled = false,
   readOnly = false,
   onKeyDown, // Catch custom onKeyDown if passed by a parent
-  ...rest // Catch any other standard HTML props (like min, max, step)
+  allowNegative = false, // Set true for fields where negative numbers are valid (financial adjustments, temperature, etc.)
+  min,
+  ...rest // Catch any other standard HTML props (like max, step)
 }) {
 
-  // Intercept key presses to block negative numbers and exponents
+  // Intercept key presses to block exponents always, and the minus sign unless
+  // the caller explicitly opted into negative values via allowNegative.
   const handleKeyDown = (e) => {
-    if (type === 'number' && (e.key === '-' || e.key === 'e' || e.key === 'E')) {
-      e.preventDefault();
+    if (type === 'number') {
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+      }
+      if (!allowNegative && e.key === '-') {
+        e.preventDefault();
+      }
     }
     // If the parent component passed its own onKeyDown, call it too
     if (onKeyDown) {
       onKeyDown(e);
     }
   };
+
+  // Default to a min of 0 only for non-negative number fields, and only when the
+  // caller hasn't passed an explicit min. Callers needing negative values should
+  // pass allowNegative (and/or their own min) rather than relying on this default.
+  const resolvedMin = min !== undefined ? min : (type === 'number' && !allowNegative ? 0 : undefined);
 
   return (
     <div className="flex flex-col gap-1">
@@ -46,7 +59,7 @@ export default function Input({
         maxLength={maxLength}
         disabled={disabled}
         readOnly={readOnly}
-        min={type === 'number' ? '0' : undefined} // Force UI to stop at 0
+        min={resolvedMin}
         className={`px-4 py-3 rounded-xl border border-white/15 bg-white/5 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400/60 focus:bg-white/10 transition-all ${
           disabled ? 'bg-white/[0.03] text-white/30 cursor-not-allowed' : ''
         }`}
