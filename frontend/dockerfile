@@ -8,15 +8,30 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+
+# Vite bakes these into the client bundle at build time. Passed as build ARGs
+# (not a committed/copied .env file) so the image stays reproducible and no
+# local .env ever needs to enter the build context — see .dockerignore.
+ARG VITE_API_BASE_URL
+ARG VITE_APP_DOMAIN
+ARG VITE_APP_SECURE_PROTOCOL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL} \
+    VITE_APP_DOMAIN=${VITE_APP_DOMAIN} \
+    VITE_APP_SECURE_PROTOCOL=${VITE_APP_SECURE_PROTOCOL}
+
 RUN npm run build
 
 FROM node:22-alpine
+
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY server.js ./
+# Vite copies public/ into dist/ at build time — no separate public/ copy needed.
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public 2>/dev/null || true
 
 # Non-root runtime — 8080 (not 80) so a high port is permitted.
 USER node

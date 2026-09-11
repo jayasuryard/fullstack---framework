@@ -1,6 +1,15 @@
 # Deploy API — PRODUCTION environment
-# Triggered on push of a v* tag (e.g. v1.2.3).
-# Same blue-green pattern as DEV, with Production environment gate for secret access.
+#
+# Lives at repo ROOT .github/workflows/ (see deploy-backend-dev.yml for why).
+#
+# Gated on root CI (.github/workflows/ci.yml) passing for the triggering
+# `v*` tag via `workflow_run` (for a tag-triggered run, GitHub reports the tag
+# name as `head_branch`, so the same `workflow_run` mechanism used for the dev
+# deploy applies here too — see deploy-backend-dev.yml for why workflow_run
+# over folding CI into this file).
+#
+# Same blue-green + explicit-migration-step pattern as DEV, with the
+# Production environment gate for secret access.
 #
 # Before using: replace APP_NAME with your product name.
 # Required secrets (under Production environment): AWS_ACCESS_KEY_PROD,
@@ -9,9 +18,16 @@
 name: Deploy API PROD
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["v*"]
+  workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: "Git SHA to roll back to (previously built & pushed image tag). Skips build/push."
+        required: false
+        type: string
 
 env:
   AWS_REGION: ap-south-1
@@ -19,6 +35,9 @@ env:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     environment:
@@ -27,6 +46,17 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.rollback_sha || github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve deploy SHA
+        id: sha
+        run: |
+          if [ -n "${{ github.event.inputs.rollback_sha }}" ]; then
+            echo "value=${{ github.event.inputs.rollback_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -37,36 +67,48 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
+        if: github.event.inputs.rollback_sha == ''
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Login to Amazon ECR (rollback path)
+        id: login-ecr-rollback
+        if: github.event.inputs.rollback_sha != ''
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build Docker Image
+        if: github.event.inputs.rollback_sha == ''
         run: |
-          docker build -t $ECR_REPOSITORY .
+          docker build -f backend/dockerfile -t $ECR_REPOSITORY ./backend
 
-      - name: Tag Docker Image
+      - name: Tag Docker Image (SHA + latest)
+        if: github.event.inputs.rollback_sha == ''
         run: |
-          docker tag $ECR_REPOSITORY:latest \
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          docker tag $ECR_REPOSITORY:latest $REGISTRY/$ECR_REPOSITORY:${{ steps.sha.outputs.value }}
+          docker tag $ECR_REPOSITORY:latest $REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Push Docker Image
+        if: github.event.inputs.rollback_sha == ''
         run: |
-          docker push \
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          docker push $REGISTRY/$ECR_REPOSITORY:${{ steps.sha.outputs.value }}
+          docker push $REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Deploy to Production Server
         uses: appleboy/ssh-action@v1.0.3
         env:
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry || steps.login-ecr-rollback.outputs.registry }}
+          DEPLOY_SHA: ${{ steps.sha.outputs.value }}
         with:
           host: ${{ secrets.PROD_VPS_HOST }}
           username: ubuntu
           key: ${{ secrets.PROD_VPS_SSH_KEY }}
-          envs: ECR_REPOSITORY,REGISTRY
+          envs: ECR_REPOSITORY,REGISTRY,DEPLOY_SHA
           script: |
             set -e
 
-            ECR_IMAGE=$REGISTRY/$ECR_REPOSITORY:latest
+            ECR_IMAGE=$REGISTRY/$ECR_REPOSITORY:$DEPLOY_SHA
             APP=APP_NAME-api-prod      # ← replace APP_NAME
             ENV_FILE=/home/ubuntu/apps/env/APP_NAME-prod.env   # ← replace APP_NAME
 
@@ -77,11 +119,23 @@ jobs:
                   --password-stdin \
                   $REGISTRY
 
-            echo "Pulling latest image..."
+            echo "Pulling image $ECR_IMAGE ..."
             docker pull $ECR_IMAGE
 
             echo "Creating backup..."
             docker commit ${APP} ${ECR_REPOSITORY}:backup || true
+
+            # --- Explicit, separately-gated migration step -------------------
+            # Runs against the target DB using the image about to be deployed,
+            # BEFORE any container starts serving traffic. A failure here stops
+            # the job (set -e) and leaves production completely untouched.
+            echo "Running database migrations (gated — failure halts deploy)..."
+            docker run --rm \
+              --env-file $ENV_FILE \
+              --add-host=host.docker.internal:host-gateway \
+              $ECR_IMAGE \
+              npx prisma migrate deploy
+            # -------------------------------------------------------------------
 
             echo "Starting staged container on temp port 4000..."
             docker rm -f ${APP}-new || true
@@ -139,11 +193,11 @@ jobs:
               # Add seed/post-deploy scripts here, e.g.:
               # docker exec ${APP} node seed/seedConfig.js || true
 
-              echo "✅ Production deployment completed successfully."
+              echo "Production deployment of $DEPLOY_SHA completed successfully."
 
             else
 
-              echo "❌ Health check failed."
+              echo "Health check failed."
               docker logs ${APP}-new || true
               docker rm -f ${APP}-new || true
               echo "Keeping existing production container."
