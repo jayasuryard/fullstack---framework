@@ -119,7 +119,8 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `frontend/vite.config.js` | ✅ | `plugins: [react(), tailwindcss()]` | No changes needed |
 | `frontend/eslint.config.js` | ✅ | ESLint 9 flat config | Add product-specific rules if needed |
 | `frontend/index.html` | ⚙️ | SPA shell with `__OG_TITLE__` / `__OG_DESCRIPTION__` / `__OG_IMAGE__` placeholders | Update `<title>` default; add product favicon |
-| `frontend/.env.example` | ⚙️ | `VITE_API_BASE_URL`, `VITE_APP_DOMAIN` | Fill in per environment; local `docker build` runs can pass matching `--build-arg` values |
+| `frontend/public/branding-bootstrap.js` | ✅ | Branding bootstrap script, externalized out of `index.html` so the page's CSP can use `script-src 'self'` with no `unsafe-inline` | No changes needed |
+| `frontend/.env.example` | ⚙️ | `VITE_API_BASE_URL`, `VITE_WS_URL`, `VITE_APP_DOMAIN` | Fill in per environment; local `docker build` runs can pass matching `--build-arg` values |
 
 ### Core React
 

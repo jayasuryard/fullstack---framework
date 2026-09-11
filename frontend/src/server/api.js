@@ -8,7 +8,9 @@
  *    Singleton refreshPromise — no duplicate refresh calls.
  *  - ApiError class with responseCode, url, payload
  *  - Response unwrapping (responseCode 1000/1012 = success; anything else throws)
- *  - localStorage session helpers: setAuthSession, clearAuthSession, getStoredToken, etc.
+ *  - In-memory access-token store + localStorage `user` cache (the refresh token
+ *    itself lives ONLY in the backend's httpOnly cookie — never in JS — see F11)
+ *  - A tiny pub/sub so AuthContext can react when this module invalidates a session
  *  - Namespaced `api` object — add your product's domain methods below
  *
  * To add a new domain namespace:
@@ -21,58 +23,77 @@
  *   }
  */
 
-const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-const API_BASE_URL     = RAW_API_BASE_URL.replace(/\/+$/g, '')
+// Single place the base URL is assembled: <origin>/api/v1<path>. VITE_API_BASE_URL
+// is normally a full backend origin (see .env.example) and defaults to '' (same
+// origin) — never append a second '/api' prefix here, that was the F19 bug
+// ('/api' default + '/api/v1' suffix => '/api/api/v1', matching no route).
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/g, '')
+const API_PREFIX = '/api/v1'
+const buildUrl   = (path) => `${API_ORIGIN}${API_PREFIX}${path}`
 
 const METHODS_WITHOUT_BODY = new Set(['GET', 'HEAD'])
+const REQUEST_TIMEOUT_MS   = 20_000
 
 const STORAGE_KEYS = {
-  token:        'token',
-  refreshToken: 'refreshToken',
-  user:         'user',
+  user: 'user',
 }
+
+// ── In-memory access token (F11) ────────────────────────────────────────────────
+// Owned here as the single source of truth; AuthContext reads/writes it through
+// these exports rather than keeping its own copy. Deliberately NOT persisted —
+// lost on a hard refresh is fine, the app silently re-derives a new one from the
+// httpOnly refresh cookie on load (see AuthContext).
+let accessToken = null
+export function getAccessToken()      { return accessToken }
+export function setAccessToken(token) { accessToken = token }
 
 let refreshPromise = null
 
-// ── Storage helpers ────────────────────────────────────────────────────────────
+// ── Session-invalidated pub/sub ─────────────────────────────────────────────────
+// Fired only when a recovery refresh fails (session was valid, then got revoked/
+// expired) — never for a login request's own 401 (wrong password is expected).
+// AuthContext subscribes on mount so React state stays in sync with what this
+// module knows about the session (F19).
+const sessionInvalidatedHandlers = new Set()
+export function onSessionInvalidated(cb) {
+  sessionInvalidatedHandlers.add(cb)
+  return () => sessionInvalidatedHandlers.delete(cb)
+}
+function notifySessionInvalidated() {
+  sessionInvalidatedHandlers.forEach(cb => { try { cb() } catch { /* isolated */ } })
+}
+
+// ── Storage helpers (user cache only — no tokens) ───────────────────────────────
 
 function hasStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 }
 
-function readStorageValue(key) {
-  if (!hasStorage()) return null
-  return window.localStorage.getItem(key)
-}
-
-function writeStorageValue(key, value) {
-  if (!hasStorage()) return
-  if (value === undefined || value === null || value === '') {
-    window.localStorage.removeItem(key)
-    return
-  }
-  window.localStorage.setItem(key, value)
-}
-
-export function getStoredToken()        { return readStorageValue(STORAGE_KEYS.token) }
-export function getStoredRefreshToken() { return readStorageValue(STORAGE_KEYS.refreshToken) }
 export function getStoredUser() {
-  const raw = readStorageValue(STORAGE_KEYS.user)
-  try { return raw ? JSON.parse(raw) : null } catch { return null }
+  if (!hasStorage()) return null
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEYS.user)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
 }
 
 export function setStoredUser(user) {
-  writeStorageValue(STORAGE_KEYS.user, JSON.stringify(user))
+  if (!hasStorage()) return
+  if (user) window.localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user))
+  else window.localStorage.removeItem(STORAGE_KEYS.user)
 }
 
-export function setAuthSession({ token, refreshToken, user }) {
-  writeStorageValue(STORAGE_KEYS.token,        token)
-  writeStorageValue(STORAGE_KEYS.refreshToken, refreshToken)
-  if (user) writeStorageValue(STORAGE_KEYS.user, JSON.stringify(user))
+// setAuthSession / clearAuthSession are the two entry points that change session
+// state; both keep the in-memory token and the user cache consistent in one place.
+export function setAuthSession({ token, user }) {
+  setAccessToken(token)
+  if (user) setStoredUser(user)
 }
 
-export function clearAuthSession() {
-  Object.values(STORAGE_KEYS).forEach(k => writeStorageValue(k, null))
+export function clearAuthSession({ notify = false } = {}) {
+  setAccessToken(null)
+  setStoredUser(null)
+  if (notify) notifySessionInvalidated()
 }
 
 // ── Request internals ──────────────────────────────────────────────────────────
@@ -90,8 +111,7 @@ class ApiError extends Error {
 export { ApiError }
 
 function getAuthHeaders() {
-  const token = getStoredToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 }
 
 function isFileLike(value) {
@@ -155,21 +175,19 @@ export function unwrapApiResult(body, fallbackMessage = 'Request failed') {
   return body.responseData?.result ?? null
 }
 
+// credentials: 'include' — the httpOnly refresh cookie travels on every request
+// that might need to trigger a refresh; harmless on requests that don't.
 async function attemptRefresh() {
-  const refreshTokenVal = getStoredRefreshToken()
-  if (!refreshTokenVal) return false
-
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/common/auth/refresh`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ refreshToken: refreshTokenVal }),
+    const response = await fetch(buildUrl('/common/auth/refresh'), {
+      method:      'POST',
+      headers:     { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body:        JSON.stringify({}),
     })
     const body = await response.json()
     if (body?.responseCode === 1000 && body?.responseData?.result?.token) {
-      const { token, refreshToken } = body.responseData.result
-      writeStorageValue(STORAGE_KEYS.token,        token)
-      writeStorageValue(STORAGE_KEYS.refreshToken, refreshToken)
+      setAccessToken(body.responseData.result.token)
       return true
     }
     return false
@@ -178,10 +196,36 @@ async function attemptRefresh() {
   }
 }
 
+// Single entry point for "trade the httpOnly refresh cookie for a fresh access
+// token" — used by both 401-recovery and AuthContext's mount-time bootstrap.
+// Coalesced through the same refreshPromise singleton as recovery does: refresh
+// rotates the cookie (one-time use), so two concurrent callers (e.g. React 19
+// StrictMode double-invoking AuthProvider's effect in dev) must not each fire
+// their own request — the second would replay an already-rotated token and 401.
+export function refreshSession() {
+  if (!refreshPromise) refreshPromise = attemptRefresh().finally(() => { refreshPromise = null })
+  return refreshPromise
+}
+
+async function fetchWithTimeout(url, init) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new ApiError('Request timed out', 0, url, null)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function request(method, path, pathParams = {}, query = {}, body = null, opts = {}) {
   const { skipAuthRecovery = false } = opts
   const resolvedPath = resolvePath(normalizePath(path), pathParams)
-  const url          = `${API_BASE_URL}/api/v1${withQuery(resolvedPath, query)}`
+  const url          = buildUrl(withQuery(resolvedPath, query))
 
   const hasFileUpload =
     body instanceof FormData ||
@@ -205,7 +249,7 @@ async function request(method, path, pathParams = {}, query = {}, body = null, o
   }
 
   async function doFetch() {
-    return fetch(url, { method, headers: buildHeaders(), body: buildBody() })
+    return fetchWithTimeout(url, { method, headers: buildHeaders(), body: buildBody(), credentials: 'include' })
   }
 
   let response = await doFetch()
@@ -214,14 +258,18 @@ async function request(method, path, pathParams = {}, query = {}, body = null, o
   // Covers both HTTP 401 and the backend's envelope-level 1010 (it replies 200 +
   // responseCode for auth failures). If the retried request still fails auth,
   // fall through and surface the error — no unbounded refresh/retry spin.
+  //
+  // skipAuthRecovery calls (the refresh call itself, and login) never land here
+  // with a "session was valid, now revoked" story — a failed login is a normal,
+  // expected 401, not a session invalidation, so it must NOT fire the
+  // sessionInvalidated pub/sub. Only the recovery-clear path below does.
   let authRecovered = false
   const recover = async () => {
     if (authRecovered) return
     authRecovered = true
-    if (!refreshPromise) refreshPromise = attemptRefresh().finally(() => { refreshPromise = null })
-    const refreshed = await refreshPromise
+    const refreshed = await refreshSession()
     if (!refreshed) {
-      clearAuthSession()
+      clearAuthSession({ notify: true })
       throw new ApiError('Session expired', response.status, url, null)
     }
     response = await doFetch()
@@ -241,7 +289,7 @@ async function request(method, path, pathParams = {}, query = {}, body = null, o
 
   let responseBody = await parseResponseBody(response)
 
-  if (!skipAuthRecovery && !authRecovered && responseBody?.responseCode === 1010 && getStoredToken()) {
+  if (!skipAuthRecovery && !authRecovered && responseBody?.responseCode === 1010 && accessToken) {
     await recover()
     responseBody = await parseResponseBody(response)
   }
@@ -253,7 +301,7 @@ async function request(method, path, pathParams = {}, query = {}, body = null, o
 
 const api = {
   common: {
-    login:   (body)  => request('POST', '/common/auth/login',   {}, {}, body),
+    login:   (body)  => request('POST', '/common/auth/login',   {}, {}, body, { skipAuthRecovery: true }),
     refresh: (body)  => request('POST', '/common/auth/refresh', {}, {}, body, { skipAuthRecovery: true }),
     logout:  ()      => request('POST', '/common/auth/logout'),
     me:      ()      => request('GET',  '/common/auth/me'),

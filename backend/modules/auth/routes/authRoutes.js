@@ -28,8 +28,10 @@ const loginSchema   = z.object({
   userName: z.string().trim().min(1).max(100),
   password: z.string().min(1).max(200),
 });
+// Refresh token now travels as an httpOnly cookie (F11); the body field is an
+// optional fallback for callers not yet migrated to cookie-based refresh.
 const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional(),
 });
 const forgotSchema  = z.object({
   email: z.string().trim().email().max(255),
