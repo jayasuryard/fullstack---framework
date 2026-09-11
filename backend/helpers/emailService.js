@@ -60,4 +60,18 @@ async function sendPasswordResetOtp(to, otp, ttlMinutes) {
   return sendMail(to, subject, html, `Your password reset code is ${otp}. It expires in ${ttlMinutes} minutes.`);
 }
 
-module.exports = { sendMail, sendPasswordResetOtp };
+/**
+ * Send an organization invitation.
+ * @param {string} to          invited email address
+ * @param {string} orgName     organization display name
+ * @param {string} inviteLink  absolute accept URL carrying the raw opaque token
+ */
+async function sendOrgInvitation(to, orgName, inviteLink) {
+  const subject = `You have been invited to join ${orgName}`;
+  const html    = `<p>You have been invited to join <strong>${orgName}</strong>.</p>
+<p><a href="${inviteLink}">Accept the invitation</a></p>
+<p>This link works once and expires in 7 days. If you did not expect this, ignore this email.</p>`;
+  return sendMail(to, subject, html, `You have been invited to join ${orgName}. Accept: ${inviteLink}`);
+}
+
+module.exports = { sendMail, sendPasswordResetOtp, sendOrgInvitation };

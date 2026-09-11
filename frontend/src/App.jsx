@@ -17,6 +17,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { OrganizationProvider } from './contexts/OrganizationContext'
 import { PrivateRoute } from './components/PrivateRoute'
 import { AppShell } from './components/AppShell'
 import { lazy, Suspense } from 'react'
@@ -101,8 +102,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        {/* Add other Context providers here (e.g. ThemeProvider, TenantProvider) */}
-        <AppRoutes />
+        {/* OrganizationProvider must sit INSIDE AuthProvider — it reads isAuthenticated. */}
+        <OrganizationProvider>
+          {/* Add other Context providers here (e.g. ThemeProvider) */}
+          <AppRoutes />
+        </OrganizationProvider>
       </AuthProvider>
     </BrowserRouter>
   )

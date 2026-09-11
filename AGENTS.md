@@ -49,6 +49,7 @@ A **SaaS scaffold** built on a proven stack. Use it to bootstrap new SaaS produc
 │   │
 │   ├── prisma/
 │   │   └── schema.prisma    # User, RefreshToken, AuditLog base models
+│   │                        # + Organization, Membership, Invitation (multi-tenancy)
 │   │                        # Add product domain models below the marker
 │   │
 │   ├── globals/
@@ -60,6 +61,7 @@ A **SaaS scaffold** built on a proven stack. Use it to bootstrap new SaaS produc
 │   │   ├── auditLogger.js   # auditLog.create wrapper
 │   │   ├── generateToken.js # JWT access + refresh token helpers
 │   │   ├── emailService.js  # SMTP transport (dev mode logs when SMTP_HOST unset)
+│   │   ├── tenantScope.js   # scopedWhere(req, extra) — MUST wrap every tenant-owned query
 │   │   ├── ws/
 │   │   │   └── hub.js       # Reusable WS emitter/receiver: attachWsHub + emitToChannel
 │   │   └── queue/
@@ -71,12 +73,17 @@ A **SaaS scaffold** built on a proven stack. Use it to bootstrap new SaaS produc
 │   │   ├── role.js          # role(...roles) guard
 │   │   ├── accessLevel.js   # read-only enforcement
 │   │   ├── rateLimit.js     # createLimiter() factory + preset limiters
-│   │   └── upload.js        # multer memoryStorage 5 MB
+│   │   ├── upload.js        # multer memoryStorage 5 MB
+│   │   ├── tenantContext.js # :orgId param / X-Organization-Id → req.organizationId + req.membership
+│   │   └── requireOrgRole.js# requireOrgRole(...roles) + ORG_PERMISSIONS matrix
 │   │
 │   ├── modules/
-│   │   └── auth/
-│   │       ├── routes/authRoutes.js    # login, refresh, me, logout, profile, pwd reset
-│   │       └── services/AuthService.js # full auth logic
+│   │   ├── auth/
+│   │   │   ├── routes/authRoutes.js    # login, refresh, me, logout, profile, pwd reset
+│   │   │   └── services/AuthService.js # full auth logic
+│   │   └── organizations/
+│   │       ├── routes/organizationRoutes.js      # /orgs CRUD, members, invitations
+│   │       └── services/OrganizationService.js   # org + membership + invitation logic
 │   │
 │   ├── routes/
 │   │   └── index.js         # Central router — add module mounts here
@@ -107,12 +114,13 @@ A **SaaS scaffold** built on a proven stack. Use it to bootstrap new SaaS produc
         ├── main.jsx
         ├── App.jsx          # Route definitions + DefaultRedirect
         ├── contexts/
-        │   └── AuthContext.jsx  # Global auth state, useAuth()
+        │   ├── AuthContext.jsx          # Global auth state, useAuth()
+        │   └── OrganizationContext.jsx  # Org list + per-TAB active org (sessionStorage), useOrganization()
         ├── components/
         │   ├── PrivateRoute.jsx
         │   ├── MainLayout.jsx   # Desktop sidebar — define NAV_ITEMS
         │   ├── MobileLayout.jsx # Mobile bottom nav — define MOBILE_NAV_ITEMS
-        │   └── common/          # 17 reusable UI primitives
+        │   └── common/          # 18 reusable UI primitives (incl. OrganizationSwitcher)
         ├── hooks/
         │   └── useDataFetch.js  # Generic data fetch hook
         ├── server/
@@ -305,6 +313,11 @@ wsClient.onChannel('user:' + userId, (payload) => ...);  // auto-connects
 | Tests | backend `node --test tests/` · frontend `vitest` · CI `.github/workflows/ci.yml` |
 | Frontend API client | `frontend/src/server/api.js` |
 | Auth context | `frontend/src/contexts/AuthContext.jsx` |
+| Tenant (org) resolution | `backend/middleware/tenantContext.js` — `:orgId` param, else `X-Organization-Id`; always 403, never 404 |
+| Org permission matrix | `backend/middleware/requireOrgRole.js` (`ORG_PERMISSIONS`) |
+| Scoping a tenant-owned query | `backend/helpers/tenantScope.js` — `scopedWhere(req, extra)`, mandatory |
+| Organization API | `backend/modules/organizations/` |
+| Organization context (frontend) | `frontend/src/contexts/OrganizationContext.jsx` — active org is per-TAB (`sessionStorage`) |
 | Common UI | `frontend/src/components/common/index.js` |
 | Design templates | `frontend/src/components/designs/` (10 landing-page templates, TSX) |
 | File statuses + open decisions | `SOURCE-MAPPING.md` |

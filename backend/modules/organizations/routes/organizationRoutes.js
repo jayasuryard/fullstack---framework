@@ -1,0 +1,74 @@
+/**
+ * Organization routes. Mounted at /api/v1/orgs behind verifyToken (routes/index.js).
+ *
+ * POST   /orgs                               create (creator becomes owner)
+ * GET    /orgs                               list the caller's organizations
+ * POST   /orgs/invitations/:token/accept     accept an invitation
+ * POST   /orgs/:orgId/invitations            invite by email        (owner/admin)
+ * GET    /orgs/:orgId/members                list members           (any member)
+ * PATCH  /orgs/:orgId/members/:membershipId  change role / remove   (owner/admin)
+ * DELETE /orgs/:orgId                        delete org             (owner)
+ *
+ * The first three are USER-scoped (no organization in play yet, or the token is
+ * the org reference) so they skip tenantContext. Everything under /:orgId is
+ * org-scoped: tenantContext resolves + authorizes the tenant, then requireOrgRole
+ * checks the caller's role within it.
+ */
+const express     = require('express');
+const router      = express.Router();
+const tenantContext = require('../../../middleware/tenantContext');
+const { requireOrgRole, ORG_PERMISSIONS } = require('../../../middleware/requireOrgRole');
+const { validateBody, z } = require('../../../middleware/validate');
+const {
+  createOrganization,
+  listOrganizations,
+  inviteMember,
+  acceptInvitation,
+  listMembers,
+  updateMember,
+  deleteOrganization,
+} = require('../services/OrganizationService');
+
+const ROLES = ['owner', 'admin', 'member', 'viewer'];
+
+const createSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  slug: z.string().trim().toLowerCase()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase alphanumeric with single hyphens')
+    .min(2).max(63).optional(),
+});
+
+const inviteSchema = z.object({
+  email: z.string().trim().email().max(255),
+  role:  z.enum(ROLES),
+});
+
+const updateMemberSchema = z.object({
+  role:   z.enum(ROLES).optional(),
+  status: z.literal('removed').optional(),
+}).refine((v) => v.role || v.status, { message: 'Provide role or status' });
+
+// ── User-scoped ───────────────────────────────────────────────────────────────
+router.post('/', validateBody(createSchema), createOrganization);
+router.get('/',  listOrganizations);
+// Declared before the /:orgId block so "invitations" is never read as an org id.
+router.post('/invitations/:token/accept', acceptInvitation);
+
+// ── Org-scoped ────────────────────────────────────────────────────────────────
+router.post('/:orgId/invitations',
+  tenantContext, requireOrgRole(...ORG_PERMISSIONS['members:invite']),
+  validateBody(inviteSchema), inviteMember);
+
+router.get('/:orgId/members',
+  tenantContext, requireOrgRole(...ORG_PERMISSIONS['members:view']),
+  listMembers);
+
+router.patch('/:orgId/members/:membershipId',
+  tenantContext, requireOrgRole(...ORG_PERMISSIONS['members:manage']),
+  validateBody(updateMemberSchema), updateMember);
+
+router.delete('/:orgId',
+  tenantContext, requireOrgRole(...ORG_PERMISSIONS['org:delete']),
+  deleteOrganization);
+
+module.exports = router;

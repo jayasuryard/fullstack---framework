@@ -3,20 +3,23 @@
 // MainLayout/MobileLayout shells (see AppShell) — replace this body with real
 // widgets once the product has some.
 import { useAuth } from '../../contexts/AuthContext'
-import { Card } from '../../components/common'
+import { Card, OrganizationSwitcher } from '../../components/common'
 
 export default function DashboardPage() {
   const { user } = useAuth()
 
   return (
     <div className="min-h-full p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">
-          Welcome back, {user?.name || user?.email}
-        </h1>
-        <p className="text-sm text-white/50">
-          Role: {user?.role} · Access: {user?.accessLevel}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">
+            Welcome back, {user?.name || user?.email}
+          </h1>
+          <p className="text-sm text-white/50">
+            Role: {user?.role} · Access: {user?.accessLevel}
+          </p>
+        </div>
+        <OrganizationSwitcher />
       </div>
 
       <Card title="No widgets configured yet">
