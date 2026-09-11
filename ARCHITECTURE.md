@@ -316,6 +316,11 @@ Copy `.env.example` → `.env` and fill in values. The `.env` file is gitignored
 Frontend env vars are prefixed `VITE_` and injected at build time via `import.meta.env`.
 Copy `.env.example` → `.env` in the frontend folder.
 
+Optional pg pool tuning for `config/dbConnect.js` (all have working defaults):
+`DB_POOL_MAX` (default 10 — per-process max connections; in PM2 cluster mode,
+total = `DB_POOL_MAX` × api instances), `DB_CONNECTION_TIMEOUT_MS` (default 5000),
+`DB_IDLE_TIMEOUT_MS` (default 30000).
+
 ---
 
 ## Process Model
@@ -328,3 +333,11 @@ PM2
 
 Both read from the same `.env`. The worker uses a separate Redis connection.
 Change `APP_NAME` in `ecosystem.config.js` before deploying.
+
+The Docker image runs both apps this same way, inside one container: `start.sh`
+runs migrations then `exec`s `pm2-runtime start ecosystem.config.js` as PID 1
+(never `npx pm2-runtime` — npx doesn't forward signals to its child). PM2
+restarts a crashed worker on its own; on `docker stop`, pm2-runtime relays the
+signal to both apps, each of which drains before exiting (`worker.js`'s own
+25s-bounded drain via `helpers/queue/jobQueue.js`'s `stop()`, `server.js`'s
+10s HTTP drain).

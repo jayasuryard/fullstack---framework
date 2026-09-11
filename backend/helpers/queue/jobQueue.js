@@ -34,6 +34,11 @@ const RECOVERY_INTERVAL_MS    = 30 * 1000;      // periodic sweep for expired le
 const PROCESSING_TTL_SECONDS  = 2 * 60 * 60;    // safety-net TTL on the status hash while actively processing, refreshed by heartbeat
 const TERMINAL_TTL_SECONDS    = 24 * 60 * 60;   // retention for completed/failed job status (matches the framework's other 24h-class windows)
 
+const LIVENESS_KEY            = 'job:worker:heartbeat'; // last-write timestamp — proves the worker loop is actually looping, not just that the process is up
+const LIVENESS_INTERVAL_MS    = 10 * 1000;
+const LIVENESS_TTL_SECONDS    = 30;             // 3x the write interval — a stalled/crashed worker's key expires on its own
+const DEFAULT_DRAIN_TIMEOUT_MS = 25 * 1000;     // bounded grace period for SIGTERM: let the in-flight job finish, then force-exit
+
 async function enqueueJob(queueName, payload, meta = {}, opts = {}) {
   const jobId     = uuidv4();
   const queueKey  = `${QUEUE_PREFIX}${queueName}`;
@@ -222,7 +227,33 @@ async function recoverStuckJobs() {
   return recovered;
 }
 
-async function _runQueueLoop(queueName, handler, workerId, exitOnError) {
+/**
+ * Write a heartbeat timestamp so external tooling can observe "the worker
+ * loop is actually looping", not just that the process/container is up (the
+ * container healthcheck only proves the API answers — it says nothing about
+ * the separately-supervised worker). The key self-expires, so a stalled or
+ * crashed worker's liveness silently goes stale rather than requiring a
+ * separate cleanup step.
+ */
+async function _writeLiveness() {
+  await client.set(LIVENESS_KEY, new Date().toISOString(), { EX: LIVENESS_TTL_SECONDS });
+}
+
+async function getWorkerLiveness() {
+  const ts = await client.get(LIVENESS_KEY);
+  return ts ? { lastHeartbeat: ts, aliveMs: Date.now() - new Date(ts).getTime() } : null;
+}
+
+/**
+ * @param {() => boolean} shouldStop   Returns true once shutdown has been requested —
+ *                                     checked only between jobs (BLMOVE claims are atomic,
+ *                                     so a job already claimed is always run to completion).
+ * @param {Set<Promise>}  inFlight     Shared set the caller drains on shutdown; holds the
+ *                                     promise of whichever job is currently being processed.
+ * @param {Array}         blockingClients  Shared array the caller appends this loop's
+ *                                     dedicated BLMOVE connection to, so it can be closed on shutdown.
+ */
+async function _runQueueLoop(queueName, handler, workerId, exitOnError, shouldStop, inFlight, blockingClients) {
   const { createClient } = require('redis');
   const blockingClient = createClient({
     url:      `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
@@ -231,13 +262,14 @@ async function _runQueueLoop(queueName, handler, workerId, exitOnError) {
   });
   blockingClient.on('error', err => console.error(`[Worker:${queueName}] Redis error:`, err.message));
   await blockingClient.connect();
+  blockingClients.push(blockingClient);
 
   const queueKey      = `${QUEUE_PREFIX}${queueName}`;
   const processingKey = `${PROCESSING_LIST_PREFIX}${queueName}`;
 
   console.log(`[Worker] Listening on: ${queueName}`);
 
-  while (true) {
+  while (!shouldStop()) {
     let jobId;
     try {
       // BLMOVE atomically pops from the queue and pushes into the processing
@@ -245,18 +277,23 @@ async function _runQueueLoop(queueName, handler, workerId, exitOnError) {
       // exists in neither list, unlike the old BLPOP-then-mark approach.
       jobId = await blockingClient.blMove(queueKey, processingKey, 'LEFT', 'RIGHT', BLPOP_TIMEOUT);
     } catch (err) {
+      if (shouldStop()) break; // shutdown closed the connection out from under a pending BLMOVE — expected, not an error
       console.error(`[Worker:${queueName}] BLMOVE error:`, err.message);
       await new Promise(r => setTimeout(r, 2000));
       continue;
     }
     if (!jobId) continue;
 
-    try {
-      await _processClaimedJob(jobId, queueName, queueKey, processingKey, handler, workerId, exitOnError);
-    } catch (err) {
-      console.error(`[Worker:${queueName}] Unhandled error processing ${jobId}:`, err.message);
-    }
+    // Claimed atomically — always run it to completion even if shutdown was
+    // requested mid-flight; only the NEXT loop iteration honors shouldStop().
+    const jobPromise = _processClaimedJob(jobId, queueName, queueKey, processingKey, handler, workerId, exitOnError)
+      .catch(err => console.error(`[Worker:${queueName}] Unhandled error processing ${jobId}:`, err.message));
+    inFlight.add(jobPromise);
+    await jobPromise;
+    inFlight.delete(jobPromise);
   }
+
+  console.log(`[Worker:${queueName}] Loop stopped.`);
 }
 
 async function _processClaimedJob(jobId, queueName, queueKey, processingKey, handler, workerId, exitOnError) {
@@ -340,11 +377,24 @@ async function _processClaimedJob(jobId, queueName, queueKey, processingKey, han
  * @param {Record<string, Function>} handlers  Map of queueName → async handler(payload, ctx)
  * @param {object} opts
  * @param {boolean} opts.exitOnError           Exit process on handler failure (default false)
+ * @returns {{ stop: (drainTimeoutMs?: number) => Promise<void> }}
+ *          `stop()` hooks into the existing per-queue loop-control rather than adding a
+ *          parallel shutdown mechanism: it flips the `shouldStop` flag each loop already
+ *          checks between jobs, then waits (bounded) for whatever job is currently in
+ *          flight — it never aborts a job mid-handler.
  */
 function startWorker(handlers, opts = {}) {
   const { exitOnError = false } = opts;
   const queueNames = Object.keys(handlers);
   const workerId   = uuidv4();
+
+  let stopping = false;
+  const shouldStop = () => stopping;
+  const inFlight = new Set();
+  const blockingClients = [];
+  let sweepInterval = null;
+  let livenessInterval = null;
+  let loopsSettled = Promise.resolve();
 
   if (!queueNames.length) {
     // No handlers registered (fresh scaffold). Idle instead of crashing so the
@@ -362,16 +412,57 @@ function startWorker(handlers, opts = {}) {
       console.error('[Worker] Startup recovery failed:', err.message);
     }
 
-    const sweep = setInterval(() => {
+    sweepInterval = setInterval(() => {
       recoverStuckJobs().catch(err => console.error('[Worker] Recovery sweep failed:', err.message));
     }, RECOVERY_INTERVAL_MS);
-    sweep.unref?.();
+    sweepInterval.unref?.();
 
-    for (const queueName of queueNames) {
-      _runQueueLoop(queueName, handlers[queueName], workerId, exitOnError)
-        .catch(err => console.error(`[Worker:${queueName}] Queue loop crashed:`, err.message));
-    }
+    _writeLiveness().catch(err => console.error('[Worker] Liveness write failed:', err.message));
+    livenessInterval = setInterval(() => {
+      _writeLiveness().catch(err => console.error('[Worker] Liveness write failed:', err.message));
+    }, LIVENESS_INTERVAL_MS);
+    livenessInterval.unref?.();
+
+    loopsSettled = Promise.all(
+      queueNames.map((queueName) =>
+        _runQueueLoop(queueName, handlers[queueName], workerId, exitOnError, shouldStop, inFlight, blockingClients)
+          .catch(err => console.error(`[Worker:${queueName}] Queue loop crashed:`, err.message))
+      )
+    );
   })();
+
+  async function stop(drainTimeoutMs = DEFAULT_DRAIN_TIMEOUT_MS) {
+    if (stopping) return loopsSettled;
+    stopping = true;
+    console.log(`[Worker] Stop requested — draining in-flight job(s) (up to ${drainTimeoutMs}ms)...`);
+
+    // Force-close the blocking BLMOVE connections right away so a loop
+    // currently parked waiting for a job observes shouldStop() and exits
+    // immediately, instead of waiting out the rest of its BLPOP_TIMEOUT
+    // window. A loop mid-job-handler is unaffected — job processing runs on
+    // the shared `client`, not these dedicated blocking connections — so
+    // this never interrupts an in-flight handler.
+    await Promise.allSettled(blockingClients.map((bc) => bc.disconnect().catch(() => bc.destroy())));
+
+    let timedOut = false;
+    const drainDeadline = new Promise((resolve) => {
+      const t = setTimeout(() => { timedOut = true; resolve(); }, drainTimeoutMs);
+      t.unref?.();
+    });
+
+    await Promise.race([loopsSettled, drainDeadline]);
+
+    if (timedOut && inFlight.size > 0) {
+      console.warn(`[Worker] Drain timeout (${drainTimeoutMs}ms) reached with ${inFlight.size} job(s) still in flight — forcing shutdown.`);
+    } else {
+      console.log('[Worker] Drain complete.');
+    }
+
+    clearInterval(sweepInterval);
+    clearInterval(livenessInterval);
+  }
+
+  return { stop };
 }
 
-module.exports = { enqueueJob, getJobStatus, reportProgress, startWorker, recoverStuckJobs };
+module.exports = { enqueueJob, getJobStatus, reportProgress, startWorker, recoverStuckJobs, getWorkerLiveness };

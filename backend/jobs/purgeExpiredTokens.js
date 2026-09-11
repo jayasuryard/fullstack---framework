@@ -30,7 +30,20 @@ async function purgeExpiredTokens() {
   logger.info({ tokens: tokens.count, audits: audits.count }, 'purge run complete');
 }
 
+// PM2 cluster runs the API on N instances; without this every instance would
+// fire the same cron and the purge would run N times concurrently. PM2 sets
+// NODE_APP_INSTANCE (0-indexed) on each cluster worker — only instance 0
+// schedules it. Outside PM2 (dev, single-process) NODE_APP_INSTANCE is unset,
+// which also resolves to "0" so the cron still runs normally.
+function isCronOwnerInstance() {
+  return (process.env.NODE_APP_INSTANCE || '0') === '0';
+}
+
 function startPurgeCron() {
+  if (!isCronOwnerInstance()) {
+    logger.info({ instance: process.env.NODE_APP_INSTANCE }, 'purge cron skipped — not the owner instance');
+    return;
+  }
   cron.schedule('0 3 * * *', () => {
     purgeExpiredTokens().catch((err) => logger.error({ err }, 'purge cron failed'));
   });

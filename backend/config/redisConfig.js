@@ -50,7 +50,11 @@ async function deleteCache(...keys) {
             COUNT: 100,
           });
           cursor = nextCursor;
-          if (found.length > 0) await client.del(...found);
+          // node-redis v5's DEL command only accepts ONE `keys` argument (string
+          // or array) — client.del(...found) silently drops every key after the
+          // first when spread as separate arguments, so only key[0] ever got
+          // deleted. Pass the array itself.
+          if (found.length > 0) await client.del(found);
         } while (cursor !== '0');
       } else {
         await client.del(key);

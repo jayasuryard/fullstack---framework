@@ -97,16 +97,32 @@ app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
 // Deep health: verifies DB + Redis actually answer. Blue-green promotion uses
 // this, so a broken database never gets promoted. Liveness /health stays shallow.
+// Unauthenticated (blue-green health checks hit it over plain HTTP), so the
+// response body never carries raw dependency error text — that's logged
+// server-side only. Each check is bounded so a hung dependency can't hang the
+// whole probe (same Promise.race pattern used for Redis readiness at boot).
+const HEALTH_CHECK_TIMEOUT_MS = 4000;
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), ms);
+      t.unref();
+    }),
+  ]);
+}
 app.get('/health/deep', async (req, res) => {
   const [db, redis] = await Promise.allSettled([
-    prisma.$queryRaw`SELECT 1`,
-    client.ping(),
+    withTimeout(prisma.$queryRaw`SELECT 1`, HEALTH_CHECK_TIMEOUT_MS),
+    withTimeout(client.ping(), HEALTH_CHECK_TIMEOUT_MS),
   ]);
   const ok = db.status === 'fulfilled' && redis.status === 'fulfilled';
+  if (db.status === 'rejected')    logger.error({ err: db.reason },    'health/deep: db check failed');
+  if (redis.status === 'rejected') logger.error({ err: redis.reason }, 'health/deep: redis check failed');
   res.status(ok ? 200 : 503).json({
-    status: ok ? 'ok' : 'degraded',
-    db:     db.status === 'fulfilled' ? 'up' : `down: ${db.reason?.message || 'unknown'}`,
-    redis:  redis.status === 'fulfilled' ? 'up' : `down: ${redis.reason?.message || 'unknown'}`,
+    status: ok ? 'ok' : 'unhealthy',
+    db:     db.status === 'fulfilled'    ? 'up' : 'down',
+    redis:  redis.status === 'fulfilled' ? 'up' : 'down',
   });
 });
 
