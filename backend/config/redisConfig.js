@@ -33,7 +33,7 @@ async function getCache(key) {
 
 async function setCache(key, value, ttlSeconds = 300) {
   try {
-    await client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    await client.set(key, JSON.stringify(value), { EX: ttlSeconds });
   } catch (err) {
     console.error('[Redis] setCache error:', err.message);
   }

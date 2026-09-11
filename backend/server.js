@@ -7,7 +7,22 @@ const helmet  = require('helmet');
 const multer  = require('multer');
 const { randomUUID } = require('node:crypto');
 const pinoHttp = require('pino-http');
+const pino     = require('pino');
 require('dotenv').config();
+
+// Credential/token query params must never reach stdout via req.url logging
+// (e.g. a mis-designed link like /reset?token=... or /verify?otp=...).
+const URL_REDACT_PARAMS = ['token', 'refreshToken', 'otp', 'code', 'password'];
+function sanitizeUrl(url) {
+  const qIndex = url.indexOf('?');
+  if (qIndex === -1) return url;
+  const params = new URLSearchParams(url.slice(qIndex + 1));
+  let changed = false;
+  for (const p of URL_REDACT_PARAMS) {
+    if (params.has(p)) { params.set(p, '[REDACTED]'); changed = true; }
+  }
+  return changed ? `${url.slice(0, qIndex)}?${params.toString()}` : url;
+}
 
 // ── Production config guard ────────────────────────────────────────────────────
 // Runs BEFORE infra modules are required so a misconfigured deploy fails with a
@@ -20,6 +35,9 @@ if (process.env.NODE_ENV === 'production') {
   if (!process.env.DATABASE_URL)        missing.push('DATABASE_URL');
   if (!process.env.REDIS_HOST)          missing.push('REDIS_HOST');
   if (!process.env.REDIS_PORT)          missing.push('REDIS_PORT');
+  // Password reset is always wired (forgot/reset-password routes) — without SMTP
+  // in production, emailService would otherwise fall back to logging the raw OTP.
+  if (!process.env.SMTP_HOST)           missing.push('SMTP_HOST (required — password reset emails)');
   if (missing.length) {
     console.error(`[config] Refusing to start in production. Missing/weak env: ${missing.join(', ')}`);
     process.exit(1);
@@ -56,6 +74,13 @@ app.use(pinoHttp({
   logger,
   genReqId:  (req) => req.headers['x-request-id'] || randomUUID(),
   autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/health/deep' },
+  serializers: {
+    req(req) {
+      const serialized = pino.stdSerializers.req(req);
+      serialized.url = sanitizeUrl(serialized.url);
+      return serialized;
+    },
+  },
 }));
 
 // If your product has a payment webhook that requires the raw body for HMAC verification,

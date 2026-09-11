@@ -34,6 +34,12 @@ function getTransport() {
 async function sendMail(to, subject, html, text = '') {
   const t = getTransport();
   if (!t) {
+    // Logging email content (OTPs included) is a dev convenience only — server.js's
+    // production config guard already refuses to boot without SMTP_HOST, so this
+    // is a defense-in-depth failure, not the primary control.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('[emailService] SMTP is not configured — refusing to silently log email content in production.');
+    }
     console.log(`[emailService] DEV MODE (SMTP_HOST not set) — email to ${to}:\nSubject: ${subject}\n${text || html.replace(/<[^>]+>/g, '')}`);
     return { sent: false, dev: true };
   }
