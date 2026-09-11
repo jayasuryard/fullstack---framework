@@ -1,4 +1,5 @@
-# CI — run on every push/PR. Gates: backend tests, frontend lint + build + tests.
+# CI — run on every push/PR. Gates: backend tests (incl. integration, against real
+# Postgres/Redis service containers), frontend lint + build + tests.
 name: CI
 
 on:
@@ -9,6 +10,37 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+    # Real Postgres + Redis so tests/*.integration.test.js (gated on
+    # RUN_INTEGRATION=1 / TEST_DATABASE_URL, see backend/tests/auth.integration.test.js)
+    # actually run in CI instead of skipping silently.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: framework_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RUN_INTEGRATION: '1'
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/framework_ci?schema=public
+      TEST_REDIS_HOST: localhost
+      TEST_REDIS_PORT: '6379'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,14 +54,39 @@ jobs:
       - name: Generate Prisma client
         working-directory: backend
         env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: npx prisma generate
+      - name: Apply migrations (CI database)
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npx prisma migrate deploy
       - name: Lint (syntax gate)
         working-directory: backend
         run: npm run lint
-      - name: Run tests
+      - name: Run tests (unit + integration)
         working-directory: backend
-        run: npm test
+        # RUN_INTEGRATION/TEST_DATABASE_URL/TEST_REDIS_HOST/TEST_REDIS_PORT (job env,
+        # above) enable every *.integration.test.js file. --test-concurrency=1 avoids
+        # cross-test interference on shared Redis-backed rate-limit/lockout keys
+        # (mirrors package.json's own test:integration script).
+        run: node --test --test-concurrency=1 --test-reporter=tap "tests/*.test.js" | tee test-output.tap
+      - name: Fail if any test was skipped for missing integration infra
+        working-directory: backend
+        # node:test does NOT fail the run on a skip by default — a skip here means
+        # the env wiring above broke and coverage silently vanished again. Treat it
+        # as a hard failure instead of letting CI stay green.
+        run: |
+          if grep -qi "integration infra not configured" test-output.tap; then
+            echo "::error::An integration test skipped in CI (env wiring broken) — see test-output.tap"
+            grep -n -B2 -i "integration infra not configured" test-output.tap || true
+            exit 1
+          fi
+          if grep -Eq "^# (tests|pass) 0$" test-output.tap; then
+            echo "::error::No tests ran — TAP output looks empty/malformed"
+            exit 1
+          fi
+          echo "No integration-infra skips found."
 
   frontend:
     name: Frontend lint + build + tests
