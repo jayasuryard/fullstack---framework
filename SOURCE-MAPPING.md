@@ -47,7 +47,8 @@ Every file in this repo, what it does, and what you need to customize per produc
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `backend/prisma/schema.prisma` | 🔌 | `User`, `RefreshToken`, `AuditLog` base models | Add domain models below the `── Product Models ──` marker |
+| `backend/prisma/schema.prisma` | 🔌 | `User`, `RefreshToken`, `AuditLog` base models + multi-tenancy (`Organization`, `Membership`, `Invitation`, enums `OrganizationStatus`/`MembershipRole`/`MembershipStatus`) | Add domain models below the `── Product Models ──` marker. Every tenant-owned model MUST carry an indexed `organizationId` FK — see the tenancy contract comment above the `Organization` model |
+| `backend/prisma/migrations/20260911120000_add_organizations_and_memberships/` | ✅ | Creates the three tenancy tables + a **partial** unique index `Invitation_org_email_pending_key` (raw SQL — Prisma cannot express `WHERE`), enforcing one pending invitation per (org, email) | Re-add the partial index by hand if `prisma migrate dev` ever emits a DROP for it |
 | `backend/globals/response.json` | 🔌 | 14 response codes (1000–1014, 1009 retired) | Add product-specific codes if the base set doesn't cover your cases |
 
 ### Helpers
@@ -61,7 +62,8 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `backend/helpers/queue/jobQueue.js` | ✅ | Redis BLPOP queue: enqueue, status poll, progress reporting, 3 retries, `recoverStuckJobs()` on worker start | Progress events go through the WS hub (`emitToChannel('job:<id>')`) |
 | `backend/helpers/queue/jobWsServer.js` | ✅ | `/ws/jobs/:jobId` — thin job-specific shim over the shared hub | Ownership enforced: WS refused unless `job.meta.userId` matches token; snapshot sent as first event |
 | `backend/helpers/ws/hub.js` | ✅ | Reusable WS emitter/receiver: `attachWsHub(server)` (generic `/ws`), `emitToChannel(channel, payload)` (Redis pub/sub relay, cluster-safe), per-channel `authorizeChannel`/`snapshotFor` hooks | Add product channels; customize auth via options |
-| `backend/helpers/emailService.js` | ✅ | SMTP transport via nodemailer; dev mode prints to log when `SMTP_HOST` unset | Configure `SMTP_*` env vars for real delivery |
+| `backend/helpers/emailService.js` | ✅ | SMTP transport via nodemailer; dev mode prints to log when `SMTP_HOST` unset. `sendPasswordResetOtp`, `sendOrgInvitation` | Configure `SMTP_*` env vars for real delivery |
+| `backend/helpers/tenantScope.js` | ✅ | `scopedWhere(req, extra)` — merges `organizationId` into any Prisma `where`, and throws if `tenantContext` did not run. The one-line, hard-to-forget way to scope a tenant-owned query | No changes needed. Read the header comment before writing ANY query against a tenant-owned table |
 
 ### Middleware
 
@@ -72,6 +74,8 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `backend/middleware/accessLevel.js` | ✅ | Blocks `read_only` users on mutating routes | Pass `readOnlyRoles` array to block additional role names |
 | `backend/middleware/rateLimit.js` | ✅ | `loginLimiter`, `otpSendLimiter`, `refreshLimiter`, `generalLimiter` + `createLimiter()` factory | Hybrid `HybridStore`: Redis-backed (`rate-limit-redis`, per-limiter prefixes `rl:login:`/`rl:otp:`/`rl:refresh:`/`rl:general:`) shared across PM2 cluster, in-memory sliding-window fallback if Redis drops (re-inits store on reconnect, clears memory counters on recovery). Server boot waits on `redisReady` (15s race) |
 | `backend/middleware/upload.js` | ✅ | multer memoryStorage, 5 MB limit | No changes needed |
+| `backend/middleware/tenantContext.js` | ✅ | Resolves the active organization per request (`:orgId` route param, else `X-Organization-Id` header; a mismatch is 400). Verifies the caller's `Membership` is `active` and the `Organization` is `active`, then sets `req.organizationId` / `req.membership` / `req.organization`. Always **403, never 404** — a non-member cannot distinguish a real org id from a fake one | Mount it after `verifyToken` on every tenant-scoped route |
+| `backend/middleware/requireOrgRole.js` | ✅ | `requireOrgRole(...roles)` checks `req.membership.role`; `ORG_PERMISSIONS` is the explicit capability→roles table (owner / admin / member / viewer) | Add rows to `ORG_PERMISSIONS` as product capabilities appear. Target-row guards (no self-edit, only owners mint owners, only owners touch owners) live in `OrganizationService.updateMember` |
 
 ### Auth Module
 
@@ -80,13 +84,26 @@ Every file in this repo, what it does, and what you need to customize per produc
 | `backend/modules/auth/routes/authRoutes.js` | 🔌 | login, refresh, me, logout, profile, forgot/reset-password | Add product-specific routes (SSO, magic link, MFA) |
 | `backend/modules/auth/services/AuthService.js` | ✅ | Full auth logic: lockout (5 strikes → 15-min `lockedUntil`), opaque refresh-token rotation (lookup by `tokenHash` + `revoked`/`expiredAt`; expiry lives in the DB row), /me, profile, forgot/reset-password via Redis OTP | Extend `buildUserPayload()` for product-specific user fields |
 
+### Organizations Module (multi-tenancy)
+
+| File | Status | What it does | What to customize |
+|------|--------|--------------|------------------|
+| `backend/modules/organizations/routes/organizationRoutes.js` | ✅ | `POST /orgs`, `GET /orgs`, `POST /orgs/invitations/:token/accept` (user-scoped) + `POST /orgs/:orgId/invitations`, `GET /orgs/:orgId/members`, `PATCH /orgs/:orgId/members/:membershipId`, `DELETE /orgs/:orgId` (org-scoped: `tenantContext` → `requireOrgRole`). Zod-validated | Add org-scoped product routes following the same `tenantContext` + `requireOrgRole` chain |
+| `backend/modules/organizations/services/OrganizationService.js` | ✅ | Org creation (creator becomes `owner`), membership listing, opaque invitation tokens (`randomBytes(48)`, stored sha256-hashed like `RefreshToken`), single-use atomic acceptance (conditional `updateMany` claim inside a transaction — the refresh-rotation pattern), soft member removal, cascade org delete | Extend `publicOrg` / `publicMember` for product fields |
+
+**Tenancy convention:** the active organization is the `:orgId` route param for routes nested under `/orgs/:orgId`, and the `X-Organization-Id` header for tenant-scoped routes that are not nested (future files/notifications). Both may be sent but must agree. There is **no server-side "current organization"** — it is resolved per request so one user can drive different orgs in different browser tabs.
+
+**Invitation scope:** the accepting account must already exist and its email must match the invitation's (case-insensitively). "Invite an unregistered email → signup → auto-accept" is a deliberate follow-up, not implemented.
+
+**Org deletion:** hard delete; `Membership` and `Invitation` are `ON DELETE CASCADE`. Member *removal* is soft (`status='removed'`) so history survives and a re-invite reactivates the same row.
+
 **Auth flow — done:** `forgotPassword` generates a 6-digit OTP, stores its hash in Redis (`auth:reset:otp:<email>`, 10-min TTL), emails via `emailService` (send failure logged, never surfaced). `resetPassword` caps attempts per email (5), validates hash, updates password, bumps `tokenVersion`, revokes ALL refresh tokens (kills pre-reset sessions end-to-end).
 
 ### Routes & Scripts
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `backend/routes/index.js` | 🔌 | Central router — mounts auth; placeholder for product modules | Add `router.use(...)` for every new module here |
+| `backend/routes/index.js` | 🔌 | Central router — mounts auth + `/orgs` (behind `verifyToken`); placeholder for product modules | Add `router.use(...)` for every new module here |
 | `backend/scripts/generateModule.js` | ✅ | Scaffolds `modules/<name>/routes/` + `services/`, updates `routes/index.js` | No changes needed |
 | `backend/scripts/generateModel.js` | ✅ | Appends Prisma model to `schema.prisma` | No changes needed |
 | `backend/scripts/generateMigration.js` | ✅ | Runs `prisma migrate dev --name` | No changes needed |
@@ -133,6 +150,8 @@ Every file in this repo, what it does, and what you need to customize per produc
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
 | `frontend/src/contexts/AuthContext.jsx` | 🔌 | Global auth state, `login()`, `logout()`, `useAuth()` hook | Add role context switching or product-specific user fields if needed |
+| `frontend/src/contexts/OrganizationContext.jsx` | ✅ | The user's organizations + the one THIS TAB is in (`sessionStorage`, never `localStorage` — different tabs must be able to hold different orgs). `useOrganization()`, `selectOrganization()`, `createOrganization()`, `refresh()`, `hasOrgRole()`. Mounted inside `AuthProvider` in `App.jsx` | Extend with org settings once org-scoped product pages exist |
+| `frontend/src/components/common/OrganizationSwitcher.jsx` | ✅ | Minimal org dropdown + inline "create organization" form; rendered in `DashboardPage` | Move into `MainLayout` / `MobileLayout` headers for your product |
 
 ### Components
 
@@ -147,7 +166,7 @@ Every file in this repo, what it does, and what you need to customize per produc
 
 | File | Status | What it does | What to customize |
 |------|--------|--------------|------------------|
-| `frontend/src/server/api.js` | 🔌 | Single API gateway, auth headers, refresh-once recovery (HTTP 401 + envelope 1010), response unwrapping | Add product domain namespaces to the `api` object |
+| `frontend/src/server/api.js` | 🔌 | Single API gateway, auth headers, refresh-once recovery (HTTP 401 + envelope 1010), response unwrapping, `X-Organization-Id` injection (derived from the `:orgId` path param when present, else this tab's active org), `api.orgs.*` namespace | Add product domain namespaces to the `api` object |
 | `frontend/src/server/ws.js` | ✅ | Single WS client (`wsClient`) over the shared hub: auto-connect, backoff reconnect, channel subscribe/unsubscribe, typed events | No changes needed; add product channels via `subscribeChannel` |
 | `frontend/src/hooks/useWebSocket.js` | ✅ | Realtime React hook: `useWebSocket(channel, handler, { enabled })` | No changes needed |
 | `frontend/src/hooks/useDataFetch.js` | ✅ | Generic data-fetch hook with loading/error state | No changes needed |

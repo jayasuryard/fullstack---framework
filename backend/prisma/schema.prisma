@@ -38,6 +38,8 @@ model User {
 
   refreshTokens        RefreshToken[]
   auditLogs            AuditLog[]
+  memberships          Membership[]
+  invitationsSent      Invitation[]   @relation("InvitationsSent")
 }
 
 model RefreshToken {
@@ -70,6 +72,100 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+}
+
+// ── Multi-tenancy (Organization / Membership / Invitation) ────────────────────
+//
+// TENANCY CONTRACT — read before adding any product model:
+//
+//   Any tenant-owned model MUST include `organizationId String` with an index and
+//   a FK to Organization, and EVERY Prisma query against it MUST filter by it.
+//   Use `scopedWhere(req, extra)` from backend/helpers/tenantScope.js so the
+//   filter cannot be forgotten; `req.organizationId` is populated by
+//   backend/middleware/tenantContext.js. There is deliberately no Prisma
+//   extension auto-injecting the filter — see tenantScope.js for why.
+//
+//   A user may belong to MANY organizations. There is NO server-side "current
+//   organization": the active org is resolved per request (route param `:orgId`,
+//   else the `X-Organization-Id` header), never from sticky session state.
+
+enum OrganizationStatus {
+  active
+  suspended
+}
+
+enum MembershipRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum MembershipStatus {
+  active
+  invited
+  removed
+}
+
+model Organization {
+  id        String             @id @default(cuid())
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(active)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  memberships Membership[]
+  invitations Invitation[]
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MembershipRole   @default(member)
+  status         MembershipStatus @default(active)
+  invitedAt      DateTime?
+  joinedAt       DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // One row per (user, org). Role changes edit this row in place — never insert a
+  // second membership. Removal sets status='removed' (audit/history matters), so
+  // a re-invite reactivates the same row rather than creating a duplicate.
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model Invitation {
+  id              String         @id @default(cuid())
+  organizationId  String
+  email           String
+  role            MembershipRole @default(member)
+  // Named tokenHash, not token, to match RefreshToken: the raw opaque token
+  // (randomBytes(48)) is emailed once and NEVER stored.
+  tokenHash       String         @unique
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitationsSent", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  // At most one PENDING invitation per (org, email) is enforced by a PARTIAL
+  // unique index that Prisma's schema language cannot express — it lives as raw
+  // SQL in migrations/*_add_organizations_and_memberships/migration.sql
+  // ("Invitation_org_email_pending_key"). If `prisma migrate dev` ever emits a
+  // DROP for it, re-add it: the app-level pre-check in OrganizationService is a
+  // nicer error message, not a concurrency guarantee.
+  @@index([organizationId])
+  @@index([tokenHash])
 }
 
 // ── Product Models ────────────────────────────────────────────────────────────

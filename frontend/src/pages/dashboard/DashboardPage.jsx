@@ -1,7 +1,7 @@
 // src/pages/dashboard/DashboardPage.jsx
 // Placeholder landing page for authenticated roles. Replace with real widgets.
 import { useAuth } from '../../contexts/AuthContext'
-import { Card } from '../../components/common'
+import { Card, OrganizationSwitcher } from '../../components/common'
 
 export default function DashboardPage() {
   const { user, logout } = useAuth()
@@ -17,12 +17,15 @@ export default function DashboardPage() {
             Role: {user?.role} · Access: {user?.accessLevel}
           </p>
         </div>
-        <button
-          onClick={logout}
-          className="text-sm text-red-400 hover:text-red-300 font-medium"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-4">
+          <OrganizationSwitcher />
+          <button
+            onClick={logout}
+            className="text-sm text-red-400 hover:text-red-300 font-medium"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

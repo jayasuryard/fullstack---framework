@@ -32,12 +32,33 @@ const STORAGE_KEYS = {
   user:         'user',
 }
 
+// Active organization is PER-TAB (sessionStorage), never localStorage: a user who
+// belongs to several orgs must be able to run org A in one tab and org B in
+// another without the two overwriting each other. The backend has no sticky
+// "current org" either — it resolves tenancy per request.
+const ACTIVE_ORG_KEY = 'activeOrganizationId'
+
 let refreshPromise = null
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
 
 function hasStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
+function hasSessionStorage() {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined'
+}
+
+export function getActiveOrganizationId() {
+  if (!hasSessionStorage()) return null
+  return window.sessionStorage.getItem(ACTIVE_ORG_KEY)
+}
+
+export function setActiveOrganizationId(orgId) {
+  if (!hasSessionStorage()) return
+  if (orgId) window.sessionStorage.setItem(ACTIVE_ORG_KEY, orgId)
+  else window.sessionStorage.removeItem(ACTIVE_ORG_KEY)
 }
 
 function readStorageValue(key) {
@@ -73,6 +94,7 @@ export function setAuthSession({ token, refreshToken, user }) {
 
 export function clearAuthSession() {
   Object.values(STORAGE_KEYS).forEach(k => writeStorageValue(k, null))
+  setActiveOrganizationId(null)
 }
 
 // ── Request internals ──────────────────────────────────────────────────────────
@@ -183,6 +205,12 @@ async function request(method, path, pathParams = {}, query = {}, body = null, o
   const resolvedPath = resolvePath(normalizePath(path), pathParams)
   const url          = `${API_BASE_URL}/api/v1${withQuery(resolvedPath, query)}`
 
+  // Tenant context. When the path carries :orgId the header is derived from that
+  // same param, so the two can never disagree (the backend rejects a mismatch
+  // with 400). Otherwise fall back to this tab's active organization.
+  // `orgId: null` in opts explicitly opts out (user-scoped calls).
+  const orgId = 'orgId' in opts ? opts.orgId : (pathParams.orgId ?? getActiveOrganizationId())
+
   const hasFileUpload =
     body instanceof FormData ||
     (body && typeof body === 'object' && Object.values(body).some(isFileLike))
@@ -195,6 +223,7 @@ async function request(method, path, pathParams = {}, query = {}, body = null, o
 
   const buildHeaders = () => ({
     ...getAuthHeaders(),
+    ...(orgId ? { 'X-Organization-Id': orgId } : {}),
     ...((!hasFileUpload && !METHODS_WITHOUT_BODY.has(method)) ? { 'Content-Type': 'application/json' } : {}),
   })
 
@@ -260,6 +289,21 @@ const api = {
     updateProfile: (body) => request('POST', '/common/auth/profile/update', {}, {}, body),
     forgotPassword: (body) => request('POST', '/common/auth/forgot-password', {}, {}, body),
     resetPassword:  (body) => request('POST', '/common/auth/reset-password',  {}, {}, body),
+  },
+
+  // Organizations / multi-tenancy. Calls that name an :orgId are tenant-scoped;
+  // list/create/accept are user-scoped.
+  orgs: {
+    list:   ()     => request('GET',  '/orgs', {}, {}, null, { orgId: null }),
+    create: (body) => request('POST', '/orgs', {}, {}, body, { orgId: null }),
+    accept: ({ token }) => request('POST', '/orgs/invitations/:token/accept', { token }, {}, null, { orgId: null }),
+    members: {
+      list:   ({ orgId })       => request('GET',   '/orgs/:orgId/members', { orgId }),
+      invite: ({ orgId, ...b }) => request('POST',  '/orgs/:orgId/invitations', { orgId }, {}, b),
+      update: ({ orgId, membershipId, ...b }) =>
+        request('PATCH', '/orgs/:orgId/members/:membershipId', { orgId, membershipId }, {}, b),
+    },
+    delete: ({ orgId }) => request('DELETE', '/orgs/:orgId', { orgId }),
   },
 
   // Add your product's domain namespaces below:
